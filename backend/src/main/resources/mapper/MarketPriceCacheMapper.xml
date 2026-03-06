@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.MarketPriceCacheMapper">
+
+    <resultMap id="PriceMap" type="com.homewealth.model.MarketPriceCache">
+        <id property="id" column="id"/>
+        <result property="symbol" column="symbol"/>
+        <result property="symbolName" column="symbol_name"/>
+        <result property="market" column="market"/>
+        <result property="price" column="price"/>
+        <result property="currency" column="currency"/>
+        <result property="cnyRate" column="cny_rate"/>
+        <result property="cnyPrice" column="cny_price"/>
+        <result property="changePct" column="change_pct"/>
+        <result property="tradeDate" column="trade_date"/>
+        <result property="source" column="source"/>
+        <result property="isStale" column="is_stale"/>
+        <result property="fetchedAt" column="fetched_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findLatestBySymbol" resultMap="PriceMap">
+        SELECT * FROM market_price_cache
+        WHERE symbol = #{symbol}
+        ORDER BY trade_date DESC LIMIT 1
+    </select>
+
+    <select id="findLatestBySymbols" resultMap="PriceMap">
+        SELECT p.* FROM market_price_cache p
+        INNER JOIN (
+            SELECT symbol, MAX(trade_date) AS max_date
+            FROM market_price_cache
+            WHERE symbol IN
+            <foreach collection="symbols" item="s" open="(" separator="," close=")">#{s}</foreach>
+            GROUP BY symbol
+        ) latest ON p.symbol = latest.symbol AND p.trade_date = latest.max_date
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO market_price_cache
+            (symbol, symbol_name, market, price, currency, cny_rate, cny_price, change_pct, trade_date, source, is_stale, fetched_at)
+        VALUES
+            (#{symbol}, #{symbolName}, #{market}, #{price}, #{currency}, #{cnyRate}, #{cnyPrice}, #{changePct}, #{tradeDate}, #{source}, #{isStale}, NOW())
+        ON DUPLICATE KEY UPDATE
+            symbol_name = VALUES(symbol_name),
+            market      = VALUES(market),
+            price       = VALUES(price),
+            currency    = VALUES(currency),
+            cny_rate    = VALUES(cny_rate),
+            cny_price   = VALUES(cny_price),
+            change_pct  = VALUES(change_pct),
+            source      = VALUES(source),
+            is_stale    = VALUES(is_stale),
+            fetched_at  = NOW(),
+            updated_at  = NOW()
+    </insert>
+
+    <update id="markStale">
+        UPDATE market_price_cache SET is_stale = 1 WHERE symbol = #{symbol}
+    </update>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM market_price_cache WHERE trade_date &lt; #{date}
+    </delete>
+
+</mapper>

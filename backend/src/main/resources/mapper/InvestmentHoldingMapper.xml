@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.InvestmentHoldingMapper">
+
+    <resultMap id="HoldingMap" type="com.homewealth.model.InvestmentHolding">
+        <id property="id" column="id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="symbol" column="symbol"/>
+        <result property="symbolName" column="symbol_name"/>
+        <result property="market" column="market"/>
+        <result property="quantity" column="quantity"/>
+        <result property="costPrice" column="cost_price"/>
+        <result property="costCurrency" column="cost_currency"/>
+        <result property="priceCurrency" column="price_currency"/>
+        <result property="lotSize" column="lot_size"/>
+        <result property="isActive" column="is_active"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="HoldingMap">
+        SELECT * FROM investment_holding WHERE id = #{id} AND is_active = 1
+    </select>
+
+    <select id="findByUserId" resultMap="HoldingMap">
+        SELECT * FROM investment_holding
+        WHERE user_id = #{userId} AND is_active = 1
+        <if test="accountId != null">AND account_id = #{accountId}</if>
+        <if test="market != null">AND market = #{market}</if>
+        ORDER BY account_id ASC, symbol ASC
+    </select>
+
+    <select id="findActiveByUserId" resultMap="HoldingMap">
+        SELECT * FROM investment_holding WHERE user_id = #{userId} AND is_active = 1
+    </select>
+
+    <select id="findAllActiveSymbols" resultType="string">
+        SELECT DISTINCT symbol FROM investment_holding WHERE is_active = 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO investment_holding
+            (account_id, user_id, symbol, symbol_name, market, quantity, cost_price, cost_currency, price_currency, lot_size, note)
+        VALUES
+            (#{accountId}, #{userId}, #{symbol}, #{symbolName}, #{market}, #{quantity}, #{costPrice}, #{costCurrency}, #{priceCurrency}, #{lotSize}, #{note})
+    </insert>
+
+    <update id="update">
+        UPDATE investment_holding SET
+            symbol_name    = #{symbolName},
+            quantity       = #{quantity},
+            cost_price     = #{costPrice},
+            cost_currency  = #{costCurrency},
+            price_currency = #{priceCurrency},
+            lot_size       = #{lotSize},
+            note           = #{note},
+            updated_at     = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="deactivate">
+        UPDATE investment_holding SET is_active = 0, updated_at = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+</mapper>

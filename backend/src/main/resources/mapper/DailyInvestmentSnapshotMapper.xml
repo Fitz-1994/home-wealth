@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.DailyInvestmentSnapshotMapper">
+
+    <resultMap id="InvSnapshotMap" type="com.homewealth.model.DailyInvestmentSnapshot">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="snapshotDate" column="snapshot_date"/>
+        <result property="totalValueCny" column="total_value_cny"/>
+        <result property="totalCostCny" column="total_cost_cny"/>
+        <result property="unrealizedPnl" column="unrealized_pnl"/>
+        <result property="cnAValueCny" column="cn_a_value_cny"/>
+        <result property="hkValueCny" column="hk_value_cny"/>
+        <result property="usValueCny" column="us_value_cny"/>
+        <result property="hkOptValueCny" column="hk_opt_value_cny"/>
+        <result property="usOptValueCny" column="us_opt_value_cny"/>
+        <result property="otherValueCny" column="other_value_cny"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findByUserIdAndDate" resultMap="InvSnapshotMap">
+        SELECT * FROM daily_investment_snapshot WHERE user_id = #{userId} AND snapshot_date = #{date}
+    </select>
+
+    <select id="findByUserId" resultMap="InvSnapshotMap">
+        SELECT * FROM daily_investment_snapshot
+        WHERE user_id = #{userId}
+        <if test="startDate != null">AND snapshot_date &gt;= #{startDate}</if>
+        <if test="endDate != null">AND snapshot_date &lt;= #{endDate}</if>
+        ORDER BY snapshot_date ASC
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO daily_investment_snapshot
+            (user_id, snapshot_date, total_value_cny, total_cost_cny, unrealized_pnl,
+             cn_a_value_cny, hk_value_cny, us_value_cny, hk_opt_value_cny, us_opt_value_cny, other_value_cny)
+        VALUES
+            (#{userId}, #{snapshotDate}, #{totalValueCny}, #{totalCostCny}, #{unrealizedPnl},
+             #{cnAValueCny}, #{hkValueCny}, #{usValueCny}, #{hkOptValueCny}, #{usOptValueCny}, #{otherValueCny})
+        ON DUPLICATE KEY UPDATE
+            total_value_cny  = VALUES(total_value_cny),
+            total_cost_cny   = VALUES(total_cost_cny),
+            unrealized_pnl   = VALUES(unrealized_pnl),
+            cn_a_value_cny   = VALUES(cn_a_value_cny),
+            hk_value_cny     = VALUES(hk_value_cny),
+            us_value_cny     = VALUES(us_value_cny),
+            hk_opt_value_cny = VALUES(hk_opt_value_cny),
+            us_opt_value_cny = VALUES(us_opt_value_cny),
+            other_value_cny  = VALUES(other_value_cny)
+    </insert>
+
+</mapper>

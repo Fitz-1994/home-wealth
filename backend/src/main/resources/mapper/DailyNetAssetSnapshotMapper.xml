@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.DailyNetAssetSnapshotMapper">
+
+    <resultMap id="SnapshotMap" type="com.homewealth.model.DailyNetAssetSnapshot">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="snapshotDate" column="snapshot_date"/>
+        <result property="totalAssetCny" column="total_asset_cny"/>
+        <result property="totalLiabilityCny" column="total_liability_cny"/>
+        <result property="netAssetCny" column="net_asset_cny"/>
+        <result property="liquidCny" column="liquid_cny"/>
+        <result property="fixedCny" column="fixed_cny"/>
+        <result property="receivableCny" column="receivable_cny"/>
+        <result property="investmentCny" column="investment_cny"/>
+        <result property="liabilityCny" column="liability_cny"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findByUserIdAndDate" resultMap="SnapshotMap">
+        SELECT * FROM daily_net_asset_snapshot WHERE user_id = #{userId} AND snapshot_date = #{date}
+    </select>
+
+    <select id="findByUserId" resultMap="SnapshotMap">
+        SELECT * FROM daily_net_asset_snapshot
+        WHERE user_id = #{userId}
+        <if test="startDate != null">AND snapshot_date &gt;= #{startDate}</if>
+        <if test="endDate != null">AND snapshot_date &lt;= #{endDate}</if>
+        ORDER BY snapshot_date ASC
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO daily_net_asset_snapshot
+            (user_id, snapshot_date, total_asset_cny, total_liability_cny, net_asset_cny,
+             liquid_cny, fixed_cny, receivable_cny, investment_cny, liability_cny, note)
+        VALUES
+            (#{userId}, #{snapshotDate}, #{totalAssetCny}, #{totalLiabilityCny}, #{netAssetCny},
+             #{liquidCny}, #{fixedCny}, #{receivableCny}, #{investmentCny}, #{liabilityCny}, #{note})
+        ON DUPLICATE KEY UPDATE
+            total_asset_cny     = VALUES(total_asset_cny),
+            total_liability_cny = VALUES(total_liability_cny),
+            net_asset_cny       = VALUES(net_asset_cny),
+            liquid_cny          = VALUES(liquid_cny),
+            fixed_cny           = VALUES(fixed_cny),
+            receivable_cny      = VALUES(receivable_cny),
+            investment_cny      = VALUES(investment_cny),
+            liability_cny       = VALUES(liability_cny),
+            note                = VALUES(note),
+            updated_at          = NOW()
+    </insert>
+
+    <delete id="deleteByUserIdAndDate">
+        DELETE FROM daily_net_asset_snapshot WHERE user_id = #{userId} AND snapshot_date = #{date}
+    </delete>
+
+</mapper>

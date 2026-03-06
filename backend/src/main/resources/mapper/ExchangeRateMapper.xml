@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.ExchangeRateMapper">
+
+    <resultMap id="RateMap" type="com.homewealth.model.ExchangeRate">
+        <id property="id" column="id"/>
+        <result property="fromCurrency" column="from_currency"/>
+        <result property="toCurrency" column="to_currency"/>
+        <result property="rate" column="rate"/>
+        <result property="rateDate" column="rate_date"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findLatest" resultMap="RateMap">
+        SELECT * FROM exchange_rate
+        WHERE from_currency = #{fromCurrency} AND to_currency = #{toCurrency}
+        ORDER BY rate_date DESC LIMIT 1
+    </select>
+
+    <select id="findAllLatest" resultMap="RateMap">
+        SELECT r.* FROM exchange_rate r
+        INNER JOIN (
+            SELECT from_currency, to_currency, MAX(rate_date) AS max_date
+            FROM exchange_rate
+            GROUP BY from_currency, to_currency
+        ) latest ON r.from_currency = latest.from_currency
+               AND r.to_currency = latest.to_currency
+               AND r.rate_date = latest.max_date
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO exchange_rate (from_currency, to_currency, rate, rate_date, source)
+        VALUES (#{fromCurrency}, #{toCurrency}, #{rate}, #{rateDate}, #{source})
+        ON DUPLICATE KEY UPDATE rate = VALUES(rate), source = VALUES(source)
+    </insert>
+
+</mapper>

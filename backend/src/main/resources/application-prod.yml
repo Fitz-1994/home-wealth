@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.homewealth: INFO
+    org.springframework.security: WARN

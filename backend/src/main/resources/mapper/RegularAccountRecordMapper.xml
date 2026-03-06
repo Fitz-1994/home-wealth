@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.RegularAccountRecordMapper">
+
+    <resultMap id="RecordMap" type="com.homewealth.model.RegularAccountRecord">
+        <id property="id" column="id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="amount" column="amount"/>
+        <result property="currency" column="currency"/>
+        <result property="cnyRate" column="cny_rate"/>
+        <result property="cnyAmount" column="cny_amount"/>
+        <result property="recordDate" column="record_date"/>
+        <result property="isCurrent" column="is_current"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="createdBy" column="created_by"/>
+    </resultMap>
+
+    <select id="findCurrentByAccountId" resultMap="RecordMap">
+        SELECT * FROM regular_account_record
+        WHERE account_id = #{accountId} AND is_current = 1
+        ORDER BY record_date DESC LIMIT 1
+    </select>
+
+    <select id="findByAccountId" resultMap="RecordMap">
+        SELECT * FROM regular_account_record
+        WHERE account_id = #{accountId}
+        ORDER BY record_date DESC, created_at DESC
+    </select>
+
+    <select id="findAllCurrentByUserId" resultMap="RecordMap">
+        SELECT r.* FROM regular_account_record r
+        INNER JOIN asset_account a ON r.account_id = a.id
+        WHERE r.user_id = #{userId} AND r.is_current = 1 AND a.is_active = 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO regular_account_record
+            (account_id, user_id, amount, currency, cny_rate, cny_amount, record_date, is_current, note, created_by)
+        VALUES
+            (#{accountId}, #{userId}, #{amount}, #{currency}, #{cnyRate}, #{cnyAmount}, #{recordDate}, 1, #{note}, #{createdBy})
+    </insert>
+
+    <update id="markAllNotCurrent">
+        UPDATE regular_account_record SET is_current = 0
+        WHERE account_id = #{accountId} AND is_current = 1
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM regular_account_record WHERE id = #{id} AND account_id = #{accountId}
+    </delete>
+
+</mapper>

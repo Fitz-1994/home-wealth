@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.UserMapper">
+
+    <resultMap id="UserMap" type="com.homewealth.model.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="password" column="password"/>
+        <result property="displayName" column="display_name"/>
+        <result property="role" column="role"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="UserMap">
+        SELECT * FROM users WHERE id = #{id}
+    </select>
+
+    <select id="findByUsername" resultMap="UserMap">
+        SELECT * FROM users WHERE username = #{username}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO users (username, password, display_name, role, enabled)
+        VALUES (#{username}, #{password}, #{displayName}, #{role}, #{enabled})
+    </insert>
+
+    <update id="updatePassword">
+        UPDATE users SET password = #{password}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="updateEnabled">
+        UPDATE users SET enabled = #{enabled}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <select id="findAllActiveUserIds" resultType="long">
+        SELECT id FROM users WHERE enabled = 1
+    </select>
+
+</mapper>

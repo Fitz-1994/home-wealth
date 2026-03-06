@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.AssetAccountMapper">
+
+    <resultMap id="AccountMap" type="com.homewealth.model.AssetAccount">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="accountName" column="account_name"/>
+        <result property="accountType" column="account_type"/>
+        <result property="assetCategory" column="asset_category"/>
+        <result property="currency" column="currency"/>
+        <result property="description" column="description"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="isActive" column="is_active"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="AccountMap">
+        SELECT * FROM asset_account WHERE id = #{id} AND is_active = 1
+    </select>
+
+    <select id="findByUserId" resultMap="AccountMap">
+        SELECT * FROM asset_account
+        WHERE user_id = #{userId} AND is_active = 1
+        <if test="accountType != null">AND account_type = #{accountType}</if>
+        <if test="assetCategory != null">AND asset_category = #{assetCategory}</if>
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO asset_account (user_id, account_name, account_type, asset_category, currency, description, sort_order)
+        VALUES (#{userId}, #{accountName}, #{accountType}, #{assetCategory}, #{currency}, #{description}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE asset_account SET
+            account_name   = #{accountName},
+            asset_category = #{assetCategory},
+            currency       = #{currency},
+            description    = #{description},
+            sort_order     = #{sortOrder},
+            updated_at     = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="deactivate">
+        UPDATE asset_account SET is_active = 0, updated_at = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+</mapper>

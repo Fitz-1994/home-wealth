@@ -1,0 +1,44 @@
+spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  application:
+    name: home-wealth
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:home_wealth}?useUnicode=true&characterEncoding=utf8mb4&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      encoding: utf-8
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.homewealth.model
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+jwt:
+  secret: ${JWT_SECRET:home-wealth-default-secret-key-change-in-production-min-256bits}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+market:
+  yahoo:
+    base-url: https://query1.finance.yahoo.com
+    timeout: 10000
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+  sina:
+    base-url: https://hq.sinajs.cn
+    timeout: 8000
+
+logging:
+  level:
+    com.homewealth: INFO
+    org.springframework.security: WARN

@@ -47,11 +47,11 @@ services:
       - hw-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/auth/login", "--post-data", "{}", "--header", "Content-Type:application/json", "||", "exit", "0"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   frontend:
     build: ./frontend

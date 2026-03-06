@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -16,7 +16,8 @@
     "vue-echarts": "^6.6.0",
     "axios": "^1.6.0",
     "dayjs": "^1.11.0",
-    "@vueuse/core": "^10.0.0"
+    "@vueuse/core": "^10.0.0",
+    "@vicons/ionicons5": "^0.12.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",

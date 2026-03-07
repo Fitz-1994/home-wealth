@@ -16,7 +16,6 @@ public class HoldingWithPriceVO {
     private String priceCurrency;
     private BigDecimal marketValueCny;
     private BigDecimal costPrice;
-    private String costCurrency;
     private BigDecimal unrealizedPnl;
     private BigDecimal unrealizedPnlPct;
     private BigDecimal priceChangePct;

@@ -194,7 +194,9 @@ public class DashboardServiceImpl implements DashboardService {
             HoldingRankVO.HoldingRankItem item = new HoldingRankVO.HoldingRankItem();
             item.setHoldingId(holding.getId());
             item.setSymbol(holding.getSymbol());
-            item.setSymbolName(holding.getSymbolName());
+            // 优先使用行情缓存中的标的名称（来自 Yahoo Finance shortName）
+            item.setSymbolName(price.getSymbolName() != null && !price.getSymbolName().isEmpty()
+                    ? price.getSymbolName() : holding.getSymbolName());
             item.setMarket(holding.getMarket());
             item.setQuantity(holding.getQuantity());
             item.setCurrentPrice(price.getPrice());

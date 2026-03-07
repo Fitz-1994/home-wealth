@@ -17,5 +17,6 @@ public interface InvestmentHoldingMapper {
     List<String> findAllActiveSymbols();
     void insert(InvestmentHolding holding);
     void update(InvestmentHolding holding);
+    void updateSymbolName(@Param("symbol") String symbol, @Param("symbolName") String symbolName);
     void deactivate(@Param("id") Long id, @Param("userId") Long userId);
 }

@@ -73,7 +73,6 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         holding.setMarket(request.getMarket());
         holding.setQuantity(request.getQuantity());
         holding.setCostPrice(request.getCostPrice());
-        holding.setCostCurrency(request.getCostCurrency());
         holding.setPriceCurrency(request.getPriceCurrency());
         holding.setLotSize(request.getLotSize() != null ? request.getLotSize() : 1);
         holding.setNote(request.getNote());
@@ -95,7 +94,6 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         if (request.getSymbolName() != null) holding.setSymbolName(request.getSymbolName());
         if (request.getQuantity() != null) holding.setQuantity(request.getQuantity());
         if (request.getCostPrice() != null) holding.setCostPrice(request.getCostPrice());
-        if (request.getCostCurrency() != null) holding.setCostCurrency(request.getCostCurrency());
         if (request.getPriceCurrency() != null) holding.setPriceCurrency(request.getPriceCurrency());
         if (request.getLotSize() != null) holding.setLotSize(request.getLotSize());
         if (request.getNote() != null) holding.setNote(request.getNote());
@@ -124,6 +122,7 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         HoldingWithPriceVO vo = new HoldingWithPriceVO();
         vo.setSymbol(price.getSymbol());
         vo.setSymbolName(price.getSymbolName());
+        vo.setMarket(price.getMarket());
         vo.setCurrentPrice(price.getPrice());
         vo.setPriceCurrency(price.getCurrency());
         vo.setMarketValueCny(price.getCnyPrice());
@@ -135,12 +134,17 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         vo.setId(holding.getId());
         vo.setAccountId(holding.getAccountId());
         vo.setSymbol(holding.getSymbol());
-        vo.setSymbolName(holding.getSymbolName());
         vo.setMarket(holding.getMarket());
         vo.setQuantity(holding.getQuantity());
         vo.setCostPrice(holding.getCostPrice());
-        vo.setCostCurrency(holding.getCostCurrency());
         vo.setLotSize(holding.getLotSize());
+
+        // 优先使用行情缓存中的标的名称（来自 Yahoo Finance shortName）
+        if (price != null && price.getSymbolName() != null && !price.getSymbolName().isEmpty()) {
+            vo.setSymbolName(price.getSymbolName());
+        } else {
+            vo.setSymbolName(holding.getSymbolName());
+        }
 
         if (price != null) {
             vo.setCurrentPrice(price.getPrice());
@@ -157,11 +161,11 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
             vo.setMarketValueCny(marketValueCny);
 
             // 浮盈
-            if (holding.getCostPrice() != null && holding.getCostCurrency() != null) {
+            if (holding.getCostPrice() != null) {
                 BigDecimal costTotal = holding.getCostPrice()
                         .multiply(holding.getQuantity())
                         .multiply(BigDecimal.valueOf(holding.getLotSize()));
-                BigDecimal costCny = exchangeRateService.toCny(costTotal, holding.getCostCurrency());
+                BigDecimal costCny = exchangeRateService.toCny(costTotal, holding.getPriceCurrency());
                 BigDecimal pnl = marketValueCny.subtract(costCny);
                 vo.setUnrealizedPnl(pnl);
                 if (costCny.compareTo(BigDecimal.ZERO) != 0) {

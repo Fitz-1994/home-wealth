@@ -84,11 +84,11 @@ public class SnapshotServiceImpl implements SnapshotService {
                     }
 
                     // 成本汇总
-                    if (holding.getCostPrice() != null && holding.getCostCurrency() != null) {
+                    if (holding.getCostPrice() != null) {
                         BigDecimal cost = holding.getCostPrice()
                                 .multiply(holding.getQuantity())
                                 .multiply(BigDecimal.valueOf(holding.getLotSize()));
-                        totalCost = totalCost.add(exchangeRateService.toCny(cost, holding.getCostCurrency()));
+                        totalCost = totalCost.add(exchangeRateService.toCny(cost, holding.getPriceCurrency()));
                     }
                 }
             }

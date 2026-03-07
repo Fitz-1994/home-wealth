@@ -24,7 +24,6 @@ public class CreateHoldingRequest {
     private BigDecimal quantity;
 
     private BigDecimal costPrice;
-    private String costCurrency;
 
     @NotBlank(message = "价格币种不能为空")
     private String priceCurrency;

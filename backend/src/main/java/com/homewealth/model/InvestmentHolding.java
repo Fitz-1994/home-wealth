@@ -14,7 +14,6 @@ public class InvestmentHolding {
     private String market;          // CN_A / HK / US / HK_OPT / US_OPT / FX
     private BigDecimal quantity;
     private BigDecimal costPrice;
-    private String costCurrency;
     private String priceCurrency;
     private Integer lotSize;
     private Boolean isActive;

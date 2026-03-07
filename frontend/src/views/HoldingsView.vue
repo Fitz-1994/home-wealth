@@ -15,24 +15,33 @@
         style="width:140px"
         @update:value="loadHoldings"
       />
+      <n-select
+        v-model:value="filterAccount"
+        :options="accountFilterOptions"
+        placeholder="全部账户"
+        clearable
+        style="width:160px"
+        @update:value="loadHoldings"
+      />
     </div>
 
     <n-spin :show="loading">
-      <n-empty v-if="!holdings.length" description="暂无持仓，请添加" />
+      <n-empty v-if="!aggregatedHoldings.length" description="暂无持仓，请添加" />
       <div v-else class="holdings-grid">
         <n-card
-          v-for="h in holdings"
-          :key="h.id"
+          v-for="g in aggregatedHoldings"
+          :key="g.key"
           class="holding-card"
           hoverable
         >
           <div class="holding-header">
             <div>
-              <div class="symbol-name">{{ h.symbolName || h.symbol }}</div>
-              <div class="symbol-code">{{ h.symbol }} · {{ marketLabel(h.market) }}</div>
+              <div class="symbol-name">{{ g.symbolName || g.symbol }}</div>
+              <div class="symbol-code">{{ g.symbol }} · {{ marketLabel(g.market) }}</div>
+              <div class="account-tag">{{ accountName(g.accountId) }}</div>
             </div>
-            <div class="change-pct" :class="h.priceChangePct >= 0 ? 'up' : 'down'">
-              {{ formatPct(h.priceChangePct) }}
+            <div class="change-pct" :class="(g.priceChangePct ?? 0) >= 0 ? 'up' : 'down'">
+              {{ formatPct(g.priceChangePct) }}
             </div>
           </div>
 
@@ -41,36 +50,58 @@
           <div class="holding-stats">
             <div class="stat-item">
               <div class="stat-label">持仓数量</div>
-              <div class="stat-value">{{ h.quantity }}</div>
+              <div class="stat-value">{{ g.totalQuantity }}</div>
             </div>
             <div class="stat-item">
               <div class="stat-label">现价</div>
-              <div class="stat-value">{{ h.priceCurrency }} {{ h.currentPrice }}</div>
+              <div class="stat-value">{{ g.priceCurrency }} {{ g.currentPrice }}</div>
             </div>
             <div class="stat-item">
               <div class="stat-label">市值</div>
-              <div class="stat-value primary">{{ formatCny(h.marketValueCny) }}</div>
+              <div class="stat-value primary">{{ formatCny(g.totalMarketValueCny) }}</div>
             </div>
-            <div class="stat-item" v-if="h.unrealizedPnl != null">
+            <div class="stat-item" v-if="g.totalUnrealizedPnl != null">
               <div class="stat-label">浮盈亏</div>
-              <div class="stat-value" :class="h.unrealizedPnl >= 0 ? 'up' : 'down'">
-                {{ formatCny(h.unrealizedPnl) }}
-                <span style="font-size:11px">（{{ formatPct(h.unrealizedPnlPct) }}）</span>
+              <div class="stat-value" :class="g.totalUnrealizedPnl >= 0 ? 'up' : 'down'">
+                {{ formatCny(g.totalUnrealizedPnl) }}
+                <span style="font-size:11px">（{{ formatPct(g.unrealizedPnlPct) }}）</span>
               </div>
             </div>
           </div>
 
-          <n-alert v-if="h.isStale" type="warning" size="small" :show-icon="false" style="margin-top:8px">
+          <n-alert v-if="g.isStale" type="warning" size="small" :show-icon="false" style="margin-top:8px">
             行情数据可能不是最新
           </n-alert>
 
-          <div class="holding-actions">
-            <n-button text size="small" @click="editHolding(h)">编辑</n-button>
-            <n-popconfirm @positive-click="closeHolding(h.id)">
+          <!-- 多笔明细展开 -->
+          <template v-if="g.items.length > 1">
+            <div class="expand-toggle" @click="toggleExpand(g.key)">
+              <span>{{ expandedKeys.has(g.key) ? '▲' : '▼' }} {{ g.items.length }} 笔明细</span>
+            </div>
+            <div v-if="expandedKeys.has(g.key)" class="sub-items">
+              <div v-for="h in g.items" :key="h.id" class="sub-item">
+                <span class="sub-qty">× {{ h.quantity }}</span>
+                <span v-if="h.costPrice" class="sub-cost">成本 {{ h.priceCurrency }} {{ h.costPrice }}</span>
+                <span v-if="h.note" class="sub-note">{{ h.note }}</span>
+                <div class="sub-actions">
+                  <n-button text size="tiny" @click="editHolding(h)">编辑</n-button>
+                  <n-popconfirm @positive-click="closeHolding(h.id)">
+                    <template #trigger><n-button text size="tiny" type="error">清仓</n-button></template>
+                    确认清仓这笔 {{ h.quantity }} 股？
+                  </n-popconfirm>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 单笔直接显示操作按钮 -->
+          <div v-else class="holding-actions">
+            <n-button text size="small" @click="editHolding(g.items[0])">编辑</n-button>
+            <n-popconfirm @positive-click="closeHolding(g.items[0].id)">
               <template #trigger>
                 <n-button text size="small" type="error">清仓</n-button>
               </template>
-              确认清仓 {{ h.symbolName || h.symbol }}？
+              确认清仓 {{ g.symbolName || g.symbol }}？
             </n-popconfirm>
           </div>
         </n-card>
@@ -91,19 +122,16 @@
           <div v-if="validatedName" class="validated-name">✓ {{ validatedName }}</div>
         </n-form-item>
         <n-form-item label="市场类型" required v-if="!editingHolding">
-          <n-select v-model:value="form.market" :options="marketOptions" />
+          <n-select v-model:value="form.market" :options="marketOptions" :disabled="!!validatedName" />
         </n-form-item>
         <n-form-item label="价格币种" required v-if="!editingHolding">
-          <n-select v-model:value="form.priceCurrency" :options="currencyOptions" />
+          <n-select v-model:value="form.priceCurrency" :options="currencyOptions" :disabled="!!validatedName" />
         </n-form-item>
         <n-form-item label="持仓数量" required>
           <n-input-number v-model:value="form.quantity" :precision="6" style="width:100%" />
         </n-form-item>
         <n-form-item label="成本价">
           <n-input-number v-model:value="form.costPrice" :precision="6" style="width:100%" />
-        </n-form-item>
-        <n-form-item label="成本币种">
-          <n-select v-model:value="form.costCurrency" :options="currencyOptions" />
         </n-form-item>
         <n-form-item label="每手股数">
           <n-input-number v-model:value="form.lotSize" :min="1" style="width:100%" />
@@ -121,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
 import { holdingsApi } from '@/api/holdings'
 import { accountsApi } from '@/api/accounts'
@@ -136,6 +164,7 @@ const allAccounts = ref<any[]>([])
 const showDialog = ref(false)
 const editingHolding = ref<any>(null)
 const filterMarket = ref<string | null>(null)
+const filterAccount = ref<number | null>(null)
 const validatedName = ref('')
 
 const investmentAccountOptions = computed(() =>
@@ -144,7 +173,78 @@ const investmentAccountOptions = computed(() =>
     .map(a => ({ label: a.accountName, value: a.id }))
 )
 
+const accountFilterOptions = computed(() => [
+  { label: '全部账户', value: null },
+  ...allAccounts.value
+    .filter(a => a.accountType === 'INVESTMENT')
+    .map(a => ({ label: a.accountName, value: a.id }))
+])
+
+const accountMap = computed(() =>
+  Object.fromEntries(allAccounts.value.map(a => [a.id, a.accountName]))
+)
+
+const accountName = (id: number) => accountMap.value[id] || ''
+
+// 展开/收起状态
+const expandedKeys = reactive(new Set<string>())
+const toggleExpand = (key: string) => {
+  expandedKeys.has(key) ? expandedKeys.delete(key) : expandedKeys.add(key)
+}
+
+// 按 accountId + symbol 聚合持仓
+const aggregatedHoldings = computed(() => {
+  const groups = new Map<string, any>()
+  for (const h of holdings.value) {
+    const key = `${h.accountId}-${h.symbol}`
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        accountId: h.accountId,
+        symbol: h.symbol,
+        symbolName: h.symbolName,
+        market: h.market,
+        currentPrice: h.currentPrice,
+        priceCurrency: h.priceCurrency,
+        priceChangePct: h.priceChangePct,
+        isStale: h.isStale,
+        totalQuantity: 0,
+        totalMarketValueCny: 0,
+        totalUnrealizedPnl: null as number | null,
+        totalCostCny: 0,
+        hasCost: false,
+        items: [] as any[]
+      })
+    }
+    const g = groups.get(key)!
+    g.items.push(h)
+    g.totalQuantity = +(g.totalQuantity + +h.quantity).toFixed(6)
+    g.totalMarketValueCny = +(g.totalMarketValueCny + +(h.marketValueCny ?? 0)).toFixed(4)
+    if (h.unrealizedPnl != null) {
+      g.totalUnrealizedPnl = +((g.totalUnrealizedPnl ?? 0) + +h.unrealizedPnl).toFixed(4)
+      g.hasCost = true
+    }
+    if (h.marketValueCny != null && h.unrealizedPnl != null) {
+      g.totalCostCny += +(h.marketValueCny - h.unrealizedPnl).toFixed(4)
+    }
+    g.isStale = g.isStale || h.isStale
+  }
+  // 计算合并后浮盈亏%
+  for (const g of groups.values()) {
+    if (g.hasCost && g.totalCostCny > 0) {
+      g.unrealizedPnlPct = +((g.totalUnrealizedPnl / g.totalCostCny) * 100).toFixed(2)
+    }
+  }
+  return [...groups.values()]
+})
+
 const marketLabel = (key: string) => MARKET_TYPE_LABELS[key] || key
+
+const defaultLotSize = (market: string) => {
+  if (market === 'CN_A') return 100
+  if (market === 'US_OPT' || market === 'HK_OPT') return 100
+  return 1  // US / HK / FX
+}
 const marketOptions = Object.entries(MARKET_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))
 const marketFilterOptions = [{ label: '全部', value: null }, ...marketOptions]
 const currencyOptions = ['CNY', 'USD', 'HKD', 'EUR', 'JPY', 'GBP'].map(c => ({ label: c, value: c }))
@@ -155,7 +255,6 @@ const defaultForm = () => ({
   market: 'CN_A',
   quantity: 0,
   costPrice: null as number | null,
-  costCurrency: 'CNY',
   priceCurrency: 'CNY',
   lotSize: 1,
   note: ''
@@ -166,7 +265,10 @@ const form = ref(defaultForm())
 async function loadHoldings() {
   loading.value = true
   try {
-    holdings.value = await holdingsApi.list(filterMarket.value ? { market: filterMarket.value } : {}) as any[]
+    const params: any = {}
+    if (filterMarket.value) params.market = filterMarket.value
+    if (filterAccount.value) params.accountId = filterAccount.value
+    holdings.value = await holdingsApi.list(params) as any[]
   } finally {
     loading.value = false
   }
@@ -183,7 +285,12 @@ async function validateSymbol() {
   try {
     const data: any = await holdingsApi.validateSymbol(form.value.symbol, form.value.priceCurrency)
     validatedName.value = data.symbolName || form.value.symbol
-    if (data.priceCurrency) form.value.priceCurrency = data.priceCurrency
+    if (data.market) form.value.market = data.market
+    if (data.priceCurrency) {
+      form.value.priceCurrency = data.priceCurrency
+
+    }
+    form.value.lotSize = defaultLotSize(data.market)
     message.success(`验证成功：${validatedName.value}，当前价 ${data.priceCurrency} ${data.currentPrice}`)
   } catch (e: any) {
     message.error('标的代码无效或无法获取价格')
@@ -207,7 +314,7 @@ function editHolding(h: any) {
     market: h.market,
     quantity: h.quantity,
     costPrice: h.costPrice,
-    costCurrency: h.costCurrency || 'CNY',
+
     priceCurrency: h.priceCurrency,
     lotSize: h.lotSize || 1,
     note: h.note || ''
@@ -259,6 +366,7 @@ onMounted(() => {
 .holding-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .symbol-name { font-size: 15px; font-weight: 600; }
 .symbol-code { font-size: 12px; color: #999; margin-top: 2px; }
+.account-tag { display: inline-block; font-size: 11px; color: #666; background: var(--hw-border); border-radius: 4px; padding: 1px 6px; margin-top: 4px; }
 .change-pct { font-size: 16px; font-weight: 600; }
 .change-pct.up { color: #d03050; }
 .change-pct.down { color: #18a058; }
@@ -270,4 +378,12 @@ onMounted(() => {
 .stat-value.down { color: #18a058; }
 .holding-actions { display: flex; gap: 8px; margin-top: 10px; }
 .validated-name { font-size: 12px; color: #18a058; margin-top: 4px; }
+.expand-toggle { font-size: 12px; color: #999; margin-top: 10px; cursor: pointer; user-select: none; }
+.expand-toggle:hover { color: #18a058; }
+.sub-items { margin-top: 6px; border-top: 1px solid var(--hw-border); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.sub-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #666; }
+.sub-qty { font-weight: 600; color: #333; min-width: 50px; }
+.sub-cost { color: #999; }
+.sub-note { color: #bbb; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-actions { margin-left: auto; display: flex; gap: 4px; }
 </style>

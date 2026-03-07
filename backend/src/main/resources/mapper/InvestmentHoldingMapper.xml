@@ -12,7 +12,6 @@
         <result property="market" column="market"/>
         <result property="quantity" column="quantity"/>
         <result property="costPrice" column="cost_price"/>
-        <result property="costCurrency" column="cost_currency"/>
         <result property="priceCurrency" column="price_currency"/>
         <result property="lotSize" column="lot_size"/>
         <result property="isActive" column="is_active"/>
@@ -43,9 +42,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO investment_holding
-            (account_id, user_id, symbol, symbol_name, market, quantity, cost_price, cost_currency, price_currency, lot_size, note)
+            (account_id, user_id, symbol, symbol_name, market, quantity, cost_price, price_currency, lot_size, note)
         VALUES
-            (#{accountId}, #{userId}, #{symbol}, #{symbolName}, #{market}, #{quantity}, #{costPrice}, #{costCurrency}, #{priceCurrency}, #{lotSize}, #{note})
+            (#{accountId}, #{userId}, #{symbol}, #{symbolName}, #{market}, #{quantity}, #{costPrice}, #{priceCurrency}, #{lotSize}, #{note})
     </insert>
 
     <update id="update">
@@ -53,12 +52,16 @@
             symbol_name    = #{symbolName},
             quantity       = #{quantity},
             cost_price     = #{costPrice},
-            cost_currency  = #{costCurrency},
             price_currency = #{priceCurrency},
             lot_size       = #{lotSize},
             note           = #{note},
             updated_at     = NOW()
         WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateSymbolName">
+        UPDATE investment_holding SET symbol_name = #{symbolName}, updated_at = NOW()
+        WHERE symbol = #{symbol} AND is_active = 1
     </update>
 
     <update id="deactivate">

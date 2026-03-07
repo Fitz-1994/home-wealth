@@ -4,6 +4,11 @@
     <aside v-if="!isMobile" class="sidebar">
       <div class="sidebar-header">
         <span class="logo-text">家庭资产</span>
+        <n-dropdown :options="themeOptions" @select="themeStore.setMode">
+          <n-button text class="theme-btn">
+            <n-icon :size="18" :component="themeIcon" />
+          </n-button>
+        </n-dropdown>
       </div>
       <n-menu
         :options="menuOptions"
@@ -47,16 +52,32 @@
 import { computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useBreakpoints, breakpointsTailwind } from '@vueuse/core'
+import { NIcon } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import {
-  HomeOutline, WalletOutline, TrendingUpOutline, SettingsOutline
+  HomeOutline, WalletOutline, TrendingUpOutline, SettingsOutline,
+  SunnyOutline, MoonOutline, PartlySunnyOutline
 } from '@vicons/ionicons5'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const breakpoints = useBreakpoints(breakpointsTailwind)
 const isMobile = breakpoints.smaller('md')
+
+const themeOptions = [
+  { label: '浅色', key: 'light', icon: () => h(NIcon, null, { default: () => h(SunnyOutline) }) },
+  { label: '深色', key: 'dark', icon: () => h(NIcon, null, { default: () => h(MoonOutline) }) },
+  { label: '跟随系统', key: 'system', icon: () => h(NIcon, null, { default: () => h(PartlySunnyOutline) }) },
+]
+
+const themeIcon = computed(() => {
+  if (themeStore.mode === 'dark') return MoonOutline
+  if (themeStore.mode === 'light') return SunnyOutline
+  return PartlySunnyOutline
+})
 
 const user = computed(() => authStore.user)
 const userInitial = computed(() => (user.value?.displayName || user.value?.username || '?')[0])
@@ -102,10 +123,11 @@ function handleUserMenu(key: string) {
 .sidebar {
   width: 240px;
   min-width: 240px;
-  border-right: 1px solid #efeff5;
+  border-right: 1px solid var(--hw-border);
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--hw-sidebar-bg);
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .sidebar-header {
@@ -113,19 +135,27 @@ function handleUserMenu(key: string) {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  border-bottom: 1px solid #efeff5;
+  border-bottom: 1px solid var(--hw-border);
 }
 
 .logo-text {
   font-size: 18px;
   font-weight: 600;
   color: #18a058;
+  flex: 1;
+}
+
+.theme-btn {
+  color: var(--hw-text-muted);
+}
+.theme-btn:hover {
+  color: var(--hw-text);
 }
 
 .sidebar-footer {
   margin-top: auto;
   padding: 16px;
-  border-top: 1px solid #efeff5;
+  border-top: 1px solid var(--hw-border);
 }
 
 .user-info {
@@ -137,13 +167,14 @@ function handleUserMenu(key: string) {
   border-radius: 8px;
   transition: background 0.2s;
 }
-.user-info:hover { background: #f5f5f5; }
-.username { font-size: 14px; color: #333; }
+.user-info:hover { background: var(--hw-hover-bg); }
+.username { font-size: 14px; color: var(--hw-text); }
 
 .main-content {
   flex: 1;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: var(--hw-page-bg);
+  transition: background 0.2s;
 }
 .main-content.with-bottom-nav {
   padding-bottom: 64px;
@@ -155,12 +186,13 @@ function handleUserMenu(key: string) {
   left: 0;
   right: 0;
   height: 60px;
-  background: #fff;
-  border-top: 1px solid #efeff5;
+  background: var(--hw-sidebar-bg);
+  border-top: 1px solid var(--hw-border);
   display: flex;
   align-items: center;
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom);
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .nav-item {
@@ -171,7 +203,7 @@ function handleUserMenu(key: string) {
   justify-content: center;
   gap: 2px;
   cursor: pointer;
-  color: #aaa;
+  color: var(--hw-nav-inactive);
   transition: color 0.2s;
 }
 .nav-item.active { color: #18a058; }

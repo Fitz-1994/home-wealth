@@ -1,0 +1,21 @@
+/* Light mode (default) */
+:root {
+  --hw-sidebar-bg: #ffffff;
+  --hw-border: #efeff5;
+  --hw-page-bg: #f5f7fa;
+  --hw-text: #333333;
+  --hw-text-muted: #666666;
+  --hw-hover-bg: #f5f5f5;
+  --hw-nav-inactive: #aaaaaa;
+}
+
+/* Dark mode */
+html.dark {
+  --hw-sidebar-bg: #18181c;
+  --hw-border: rgba(255, 255, 255, 0.09);
+  --hw-page-bg: #101014;
+  --hw-text: rgba(255, 255, 255, 0.82);
+  --hw-text-muted: rgba(255, 255, 255, 0.52);
+  --hw-hover-bg: rgba(255, 255, 255, 0.06);
+  --hw-nav-inactive: rgba(255, 255, 255, 0.38);
+}

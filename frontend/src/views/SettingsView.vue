@@ -2,6 +2,17 @@
   <div class="settings-view">
     <h2>设置</h2>
 
+    <!-- 主题 -->
+    <n-card title="显示主题" class="settings-card">
+      <n-radio-group :value="themeStore.mode" @update:value="themeStore.setMode" name="theme">
+        <n-space>
+          <n-radio value="light">浅色</n-radio>
+          <n-radio value="dark">深色</n-radio>
+          <n-radio value="system">跟随系统</n-radio>
+        </n-space>
+      </n-radio-group>
+    </n-card>
+
     <!-- 修改密码 -->
     <n-card title="修改密码" class="settings-card">
       <n-form :model="passwordForm" label-placement="left" label-width="90">
@@ -102,7 +113,10 @@
 import { ref, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
 import { authApi } from '@/api/auth'
+import { useThemeStore } from '@/stores/theme'
 import dayjs from 'dayjs'
+
+const themeStore = useThemeStore()
 
 const message = useMessage()
 const apiKeys = ref<any[]>([])

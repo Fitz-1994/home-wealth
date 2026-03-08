@@ -38,6 +38,16 @@ market:
     base-url: https://hq.sinajs.cn
     timeout: 8000
 
+ai:
+  vision:
+    # 提供商：anthropic | openai-compatible
+    # openai-compatible 兼容所有 OpenAI 格式接口（MiniMax、OpenAI、DeepSeek 等）
+    provider: ${AI_PROVIDER:anthropic}
+    api-key: ${AI_API_KEY:}
+    # 接口地址（anthropic 默认无需修改；openai-compatible 按提供商填写）
+    api-url: ${AI_API_URL:https://api.anthropic.com/v1/messages}
+    model: ${AI_MODEL:claude-sonnet-4-6}
+
 logging:
   level:
     com.homewealth: INFO

@@ -25,6 +25,12 @@
                 {{ account.accountType === 'INVESTMENT' ? '投资账户' : '普通账户' }}
               </n-tag>
             </div>
+            <div class="account-value">
+              <span v-if="accountValues[account.id] != null" class="value-cny">
+                ¥ {{ formatCny(accountValues[account.id]) }}
+              </span>
+              <span v-else class="value-empty">—</span>
+            </div>
             <div class="account-currency">主币种：{{ account.currency }}</div>
             <div class="account-desc" v-if="account.description">{{ account.description }}</div>
             <div class="account-actions">
@@ -111,6 +117,7 @@ const message = useMessage()
 const loading = ref(false)
 const submitting = ref(false)
 const accounts = ref<any[]>([])
+const accountValues = ref<Record<number, number>>({})
 const showAccountDialog = ref(false)
 const showRecordDialog = ref(false)
 const editingAccount = ref<any>(null)
@@ -140,8 +147,20 @@ function getCategoryAccounts(category: string) {
 
 async function loadAccounts() {
   loading.value = true
-  try { accounts.value = await accountsApi.list() as any[] }
-  finally { loading.value = false }
+  try {
+    const [accts, vals] = await Promise.all([
+      accountsApi.list() as Promise<any[]>,
+      accountsApi.getValues()
+    ])
+    accounts.value = accts
+    accountValues.value = vals as any
+  } finally {
+    loading.value = false
+  }
+}
+
+function formatCny(val: number): string {
+  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(val)
 }
 
 function openCreateDialog() {
@@ -228,6 +247,9 @@ onMounted(loadAccounts)
 .account-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .account-card .account-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .account-name { font-weight: 500; }
+.account-value { margin: 6px 0 4px; }
+.value-cny { font-size: 20px; font-weight: 600; color: var(--n-text-color); }
+.value-empty { font-size: 16px; color: #999; }
 .account-currency { font-size: 12px; color: #999; margin-bottom: 4px; }
 .account-desc { font-size: 12px; color: #666; margin-bottom: 8px; }
 .account-actions { display: flex; gap: 4px; }

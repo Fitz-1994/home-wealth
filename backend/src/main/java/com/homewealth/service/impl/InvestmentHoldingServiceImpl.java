@@ -113,6 +113,16 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
     }
 
     @Override
+    public List<HoldingWithPriceVO> batchImport(Long userId, List<CreateHoldingRequest> requests) {
+        List<HoldingWithPriceVO> results = new ArrayList<>();
+        for (CreateHoldingRequest request : requests) {
+            HoldingWithPriceVO vo = createHolding(userId, request);
+            results.add(vo);
+        }
+        return results;
+    }
+
+    @Override
     public HoldingWithPriceVO validateSymbol(String symbol, String priceCurrency) {
         marketDataService.refreshSymbols(List.of(symbol.toUpperCase()));
         MarketPriceCache price = marketDataService.getLatestPrice(symbol.toUpperCase());

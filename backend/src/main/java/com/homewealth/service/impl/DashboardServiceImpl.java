@@ -42,6 +42,10 @@ public class DashboardServiceImpl implements DashboardService {
 
         for (AssetAccount account : accounts) {
             BigDecimal cny = getAccountValueCny(account, userId);
+            // 负债账户取绝对值，统一用正数表示负债规模
+            if ("LIABILITY".equals(account.getAssetCategory())) {
+                cny = cny.abs();
+            }
             categories.merge(account.getAssetCategory(), cny, BigDecimal::add);
         }
 
@@ -68,71 +72,130 @@ public class DashboardServiceImpl implements DashboardService {
         List<SankeyDataVO.Node> nodes = new ArrayList<>();
         List<SankeyDataVO.Link> links = new ArrayList<>();
 
-        // 分类标签
         Map<String, String> categoryLabels = Map.of(
                 "LIQUID", "流动资金", "FIXED", "固定资产",
-                "RECEIVABLE", "应收款", "INVESTMENT", "投资理财", "LIABILITY", "负债"
+                "RECEIVABLE", "应收款", "INVESTMENT", "投资理财"
         );
 
-        nodes.add(new SankeyDataVO.Node("总资产"));
-        nodes.add(new SankeyDataVO.Node("负债"));
-
+        // 按资产总额降序排列大类，避免大类之间的连线交叉
         Map<String, BigDecimal> categoryTotals = new LinkedHashMap<>();
-        Map<String, List<Object[]>> accountDetails = new LinkedHashMap<>(); // category -> [[name, cny]]
+        // category -> [[name, cny]]，子账户按金额降序，避免叶节点连线交叉
+        Map<String, List<Object[]>> accountDetails = new LinkedHashMap<>();
+        List<Object[]> liabilityAccounts = new ArrayList<>();
 
         List<AssetAccount> accounts = accountMapper.findByUserId(userId, null, null);
-
         for (AssetAccount account : accounts) {
             BigDecimal cny = getAccountValueCny(account, userId);
             if (cny.compareTo(BigDecimal.ZERO) == 0) continue;
 
             String cat = account.getAssetCategory();
-            categoryTotals.merge(cat, cny, BigDecimal::add);
-            accountDetails.computeIfAbsent(cat, k -> new ArrayList<>())
-                    .add(new Object[]{account.getAccountName(), cny});
+            if ("LIABILITY".equals(cat)) {
+                // 负债金额取绝对值：数据库可能存正数或负数，统一用正数表示负债规模
+                liabilityAccounts.add(new Object[]{account.getAccountName(), cny.abs()});
+            } else {
+                categoryTotals.merge(cat, cny, BigDecimal::add);
+                accountDetails.computeIfAbsent(cat, k -> new ArrayList<>())
+                        .add(new Object[]{account.getAccountName(), cny});
+            }
         }
 
-        // 计算总资产（不含负债）
-        BigDecimal totalAsset = categoryTotals.entrySet().stream()
-                .filter(e -> !"LIABILITY".equals(e.getKey()))
-                .map(Map.Entry::getValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 大类按金额降序排列，使最大流在顶部，避免交叉
+        List<Map.Entry<String, BigDecimal>> sortedCategories = categoryTotals.entrySet().stream()
+                .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                .collect(Collectors.toList());
 
-        // 资产大类 -> 总资产
-        for (Map.Entry<String, BigDecimal> entry : categoryTotals.entrySet()) {
-            if ("LIABILITY".equals(entry.getKey())) continue;
-            String label = categoryLabels.getOrDefault(entry.getKey(), entry.getKey());
-            nodes.add(new SankeyDataVO.Node(label));
-            links.add(new SankeyDataVO.Link("总资产", label, entry.getValue()));
+        BigDecimal totalAsset = categoryTotals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal liability = liabilityAccounts.stream()
+                .map(a -> (BigDecimal) a[1]).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal netAsset = totalAsset.subtract(liability);
+
+        boolean hasLiability = liability.compareTo(BigDecimal.ZERO) > 0;
+
+        // 深度定义：总资产始终在 depth=2（视觉中轴），左侧最多占 depth=0,1，右侧占 depth=3,4
+        // 无负债时净资产在 depth=0，depth=1 空置，总资产在 depth=2（50%宽度处）
+        int depthNetAsset    = 0;
+        int depthLiability   = 1;           // 仅在 hasLiability 时使用
+        int depthTotalAsset  = 2;
+        int depthCategory    = 3;
+        int depthAccount     = 4;
+
+        // ── 节点（顺序决定同列内的上下位置，从上到下）──
+
+        // depth 0: 净资产在上，负债账户在下
+        nodes.add(new SankeyDataVO.Node("净资产", depthNetAsset));
+        if (hasLiability) {
+            // 负债账户按金额降序排列
+            liabilityAccounts.sort((a, b) -> ((BigDecimal) b[1]).compareTo((BigDecimal) a[1]));
+            for (Object[] la : liabilityAccounts) {
+                nodes.add(new SankeyDataVO.Node((String) la[0], depthNetAsset));
+            }
+            nodes.add(new SankeyDataVO.Node("负债", depthLiability));
         }
 
-        // 负债
-        if (categoryTotals.containsKey("LIABILITY")) {
-            BigDecimal liabilityVal = categoryTotals.get("LIABILITY");
-            links.add(new SankeyDataVO.Link("负债", "总资产", liabilityVal)); // 负债指向总资产（方向表意）
+        // 总资产
+        nodes.add(new SankeyDataVO.Node("总资产", depthTotalAsset));
+
+        // 资产大类（按金额降序）
+        for (Map.Entry<String, BigDecimal> entry : sortedCategories) {
+            nodes.add(new SankeyDataVO.Node(categoryLabels.getOrDefault(entry.getKey(), entry.getKey()), depthCategory));
         }
 
-        // 账户 -> 大类（小于总资产0.5%的合并为"其他"）
+        // 资产账户：按大类顺序分组，组内按金额降序，消除交叉
         BigDecimal threshold = totalAsset.multiply(new BigDecimal("0.005"));
-        for (Map.Entry<String, List<Object[]>> entry : accountDetails.entrySet()) {
-            if ("LIABILITY".equals(entry.getKey())) continue;
-            String catLabel = categoryLabels.getOrDefault(entry.getKey(), entry.getKey());
-            BigDecimal otherCny = BigDecimal.ZERO;
+        for (Map.Entry<String, BigDecimal> catEntry : sortedCategories) {
+            String cat = catEntry.getKey();
+            String catLabel = categoryLabels.getOrDefault(cat, cat);
+            List<Object[]> accts = accountDetails.getOrDefault(cat, Collections.emptyList());
+            accts.sort((a, b) -> ((BigDecimal) b[1]).compareTo((BigDecimal) a[1]));
 
-            for (Object[] item : entry.getValue()) {
+            BigDecimal otherCny = BigDecimal.ZERO;
+            for (Object[] item : accts) {
+                BigDecimal cny = (BigDecimal) item[1];
+                if (cny.compareTo(threshold) >= 0) {
+                    nodes.add(new SankeyDataVO.Node((String) item[0], depthAccount));
+                } else {
+                    otherCny = otherCny.add(cny);
+                }
+            }
+            if (otherCny.compareTo(BigDecimal.ZERO) > 0) {
+                nodes.add(new SankeyDataVO.Node(catLabel + "-其他", depthAccount));
+            }
+        }
+
+        // ── 连线 ──
+
+        links.add(new SankeyDataVO.Link("净资产", "总资产", netAsset));
+
+        if (hasLiability) {
+            for (Object[] la : liabilityAccounts) {
+                links.add(new SankeyDataVO.Link((String) la[0], "负债", (BigDecimal) la[1]));
+            }
+            links.add(new SankeyDataVO.Link("负债", "总资产", liability));
+        }
+
+        for (Map.Entry<String, BigDecimal> entry : sortedCategories) {
+            String catLabel = categoryLabels.getOrDefault(entry.getKey(), entry.getKey());
+            links.add(new SankeyDataVO.Link("总资产", catLabel, entry.getValue()));
+        }
+
+        for (Map.Entry<String, BigDecimal> catEntry : sortedCategories) {
+            String cat = catEntry.getKey();
+            String catLabel = categoryLabels.getOrDefault(cat, cat);
+            List<Object[]> accts = accountDetails.getOrDefault(cat, Collections.emptyList());
+            accts.sort((a, b) -> ((BigDecimal) b[1]).compareTo((BigDecimal) a[1]));
+
+            BigDecimal otherCny = BigDecimal.ZERO;
+            for (Object[] item : accts) {
                 String name = (String) item[0];
                 BigDecimal cny = (BigDecimal) item[1];
                 if (cny.compareTo(threshold) >= 0) {
-                    nodes.add(new SankeyDataVO.Node(name));
                     links.add(new SankeyDataVO.Link(catLabel, name, cny));
                 } else {
                     otherCny = otherCny.add(cny);
                 }
             }
             if (otherCny.compareTo(BigDecimal.ZERO) > 0) {
-                String otherLabel = catLabel + "-其他";
-                nodes.add(new SankeyDataVO.Node(otherLabel));
-                links.add(new SankeyDataVO.Link(catLabel, otherLabel, otherCny));
+                links.add(new SankeyDataVO.Link(catLabel, catLabel + "-其他", otherCny));
             }
         }
 
@@ -226,6 +289,21 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setItems(items);
         vo.setTotalValueCny(totalCny);
         return vo;
+    }
+
+    @Override
+    public Map<Long, BigDecimal> getAccountValues(Long userId) {
+        List<AssetAccount> accounts = accountMapper.findByUserId(userId, null, null);
+        Map<Long, BigDecimal> result = new LinkedHashMap<>();
+        for (AssetAccount account : accounts) {
+            BigDecimal cny = getAccountValueCny(account, userId);
+            // 负债账户取绝对值
+            if ("LIABILITY".equals(account.getAssetCategory())) {
+                cny = cny.abs();
+            }
+            result.put(account.getId(), cny);
+        }
+        return result;
     }
 
     private BigDecimal getAccountValueCny(AssetAccount account, Long userId) {

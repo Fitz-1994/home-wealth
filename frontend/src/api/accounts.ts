@@ -20,5 +20,8 @@ export const accountsApi = {
   addRecord: (accountId: number, data: any) => request.post(`/accounts/${accountId}/records`, data),
 
   deleteRecord: (accountId: number, recordId: number) =>
-    request.delete(`/accounts/${accountId}/records/${recordId}`)
+    request.delete(`/accounts/${accountId}/records/${recordId}`),
+
+  /** 返回每个账户的 CNY 估值，key = accountId（字符串） */
+  getValues: () => request.get('/accounts/values') as Promise<Record<string, number>>
 }

@@ -5,6 +5,7 @@ import com.homewealth.dto.response.ApiResponse;
 import com.homewealth.model.AssetAccount;
 import com.homewealth.security.SecurityUtils;
 import com.homewealth.service.AssetAccountService;
+import com.homewealth.service.DashboardService;
 import com.homewealth.service.ExchangeRateService;
 import com.homewealth.service.RegularRecordService;
 import jakarta.validation.Valid;
@@ -23,6 +24,7 @@ public class AssetAccountController {
     private final AssetAccountService accountService;
     private final RegularRecordService recordService;
     private final ExchangeRateService exchangeRateService;
+    private final DashboardService dashboardService;
     private final SecurityUtils securityUtils;
 
     @GetMapping
@@ -57,6 +59,12 @@ public class AssetAccountController {
         Long userId = securityUtils.getCurrentUserId();
         accountService.deleteAccount(userId, id);
         return ApiResponse.success();
+    }
+
+    @GetMapping("/values")
+    public ApiResponse<Map<Long, BigDecimal>> getAccountValues() {
+        Long userId = securityUtils.getCurrentUserId();
+        return ApiResponse.success(dashboardService.getAccountValues(userId));
     }
 
     @GetMapping("/summary")

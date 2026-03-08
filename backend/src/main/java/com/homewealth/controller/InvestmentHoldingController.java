@@ -3,11 +3,14 @@ package com.homewealth.controller;
 import com.homewealth.dto.request.CreateHoldingRequest;
 import com.homewealth.dto.response.ApiResponse;
 import com.homewealth.dto.response.HoldingWithPriceVO;
+import com.homewealth.dto.response.ParsedHoldingVO;
 import com.homewealth.security.SecurityUtils;
+import com.homewealth.service.HoldingParseService;
 import com.homewealth.service.InvestmentHoldingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -19,6 +22,7 @@ public class InvestmentHoldingController {
 
     private final InvestmentHoldingService holdingService;
     private final SecurityUtils securityUtils;
+    private final HoldingParseService holdingParseService;
 
     @GetMapping
     public ApiResponse<List<HoldingWithPriceVO>> listHoldings(
@@ -59,5 +63,17 @@ public class InvestmentHoldingController {
         String symbol = body.get("symbol");
         String priceCurrency = body.getOrDefault("priceCurrency", "CNY");
         return ApiResponse.success(holdingService.validateSymbol(symbol, priceCurrency));
+    }
+
+    @PostMapping("/parse-image")
+    public ApiResponse<List<ParsedHoldingVO>> parseImage(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ParsedHoldingVO> result = holdingParseService.parseFromImage(file.getBytes(), file.getContentType());
+        return ApiResponse.success(result);
+    }
+
+    @PostMapping("/batch")
+    public ApiResponse<List<HoldingWithPriceVO>> batchImport(@RequestBody List<CreateHoldingRequest> requests) {
+        Long userId = securityUtils.getCurrentUserId();
+        return ApiResponse.success(holdingService.batchImport(userId, requests));
     }
 }

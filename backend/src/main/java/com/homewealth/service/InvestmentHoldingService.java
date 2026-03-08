@@ -12,4 +12,5 @@ public interface InvestmentHoldingService {
     HoldingWithPriceVO updateHolding(Long userId, Long holdingId, CreateHoldingRequest request);
     void closeHolding(Long userId, Long holdingId);
     HoldingWithPriceVO validateSymbol(String symbol, String priceCurrency);
+    List<HoldingWithPriceVO> batchImport(Long userId, List<CreateHoldingRequest> requests);
 }

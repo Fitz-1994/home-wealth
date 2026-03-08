@@ -12,7 +12,8 @@ public class SankeyDataVO {
     @Data
     public static class Node {
         private String name;
-        public Node(String name) { this.name = name; }
+        private Integer depth;
+        public Node(String name, int depth) { this.name = name; this.depth = depth; }
     }
 
     @Data

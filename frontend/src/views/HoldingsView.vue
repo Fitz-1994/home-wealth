@@ -209,9 +209,6 @@
         <n-form-item label="成本价">
           <n-input-number v-model:value="form.costPrice" :precision="6" style="width:100%" />
         </n-form-item>
-        <n-form-item label="每手股数">
-          <n-input-number v-model:value="form.lotSize" :min="1" style="width:100%" />
-        </n-form-item>
         <n-form-item label="备注">
           <n-input v-model:value="form.note" />
         </n-form-item>
@@ -284,8 +281,7 @@ async function parseImage() {
     parsedRows.value = result.map((r: any) => ({
       ...r,
       accountId: defaultImportAccountId.value,
-      quantity: r.quantity ?? 0,
-      lotSize: r.lotSize ?? (r.market === 'CN_A' ? 100 : 1)
+      quantity: r.quantity ?? 0
     }))
     message.success(`识别到 ${result.length} 条持仓`)
   } catch (e: any) {
@@ -308,7 +304,6 @@ async function confirmImport() {
       quantity: r.quantity,
       costPrice: r.costPrice || null,
       priceCurrency: r.priceCurrency || 'CNY',
-      lotSize: r.lotSize || 1,
       note: r.note || ''
     }))
     await holdingsApi.batchImport(requests)
@@ -402,11 +397,6 @@ const aggregatedHoldings = computed(() => {
 
 const marketLabel = (key: string) => MARKET_TYPE_LABELS[key] || key
 
-const defaultLotSize = (market: string) => {
-  if (market === 'CN_A') return 100
-  if (market === 'US_OPT' || market === 'HK_OPT') return 100
-  return 1  // US / HK / FX
-}
 const marketOptions = Object.entries(MARKET_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))
 const marketFilterOptions = [{ label: '全部', value: null }, ...marketOptions]
 const currencyOptions = ['CNY', 'USD', 'HKD', 'EUR', 'JPY', 'GBP'].map(c => ({ label: c, value: c }))
@@ -418,7 +408,6 @@ const defaultForm = () => ({
   quantity: 0,
   costPrice: null as number | null,
   priceCurrency: 'CNY',
-  lotSize: 1,
   note: ''
 })
 
@@ -450,9 +439,7 @@ async function validateSymbol() {
     if (data.market) form.value.market = data.market
     if (data.priceCurrency) {
       form.value.priceCurrency = data.priceCurrency
-
     }
-    form.value.lotSize = defaultLotSize(data.market)
     message.success(`验证成功：${validatedName.value}，当前价 ${data.priceCurrency} ${data.currentPrice}`)
   } catch (e: any) {
     message.error('标的代码无效或无法获取价格')
@@ -476,9 +463,7 @@ function editHolding(h: any) {
     market: h.market,
     quantity: h.quantity,
     costPrice: h.costPrice,
-
     priceCurrency: h.priceCurrency,
-    lotSize: h.lotSize || 1,
     note: h.note || ''
   }
   showDialog.value = true

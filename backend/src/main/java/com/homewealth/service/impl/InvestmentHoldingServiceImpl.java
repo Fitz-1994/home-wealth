@@ -65,19 +65,32 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
             throw new BusinessException(ErrorCode.NOT_INVESTMENT_ACCOUNT);
         }
 
-        InvestmentHolding holding = new InvestmentHolding();
-        holding.setAccountId(request.getAccountId());
-        holding.setUserId(userId);
-        holding.setSymbol(request.getSymbol().toUpperCase());
-        holding.setSymbolName(request.getSymbolName());
-        holding.setMarket(request.getMarket());
-        holding.setQuantity(request.getQuantity());
-        holding.setCostPrice(request.getCostPrice());
-        holding.setPriceCurrency(request.getPriceCurrency());
-        holding.setLotSize(request.getLotSize() != null ? request.getLotSize() : 1);
-        holding.setNote(request.getNote());
-        holding.setIsActive(true);
-        holdingMapper.insert(holding);
+        String symbol = request.getSymbol().toUpperCase();
+        // 同一账户下同一标的只保留一条记录：存在则覆盖，不存在才新建
+        InvestmentHolding existing = holdingMapper.findByAccountAndSymbol(request.getAccountId(), symbol);
+        InvestmentHolding holding;
+        if (existing != null) {
+            if (request.getSymbolName() != null) existing.setSymbolName(request.getSymbolName());
+            existing.setQuantity(request.getQuantity());
+            existing.setCostPrice(request.getCostPrice());
+            existing.setPriceCurrency(request.getPriceCurrency());
+            existing.setNote(request.getNote());
+            holdingMapper.update(existing);
+            holding = existing;
+        } else {
+            holding = new InvestmentHolding();
+            holding.setAccountId(request.getAccountId());
+            holding.setUserId(userId);
+            holding.setSymbol(symbol);
+            holding.setSymbolName(request.getSymbolName());
+            holding.setMarket(request.getMarket());
+            holding.setQuantity(request.getQuantity());
+            holding.setCostPrice(request.getCostPrice());
+            holding.setPriceCurrency(request.getPriceCurrency());
+            holding.setNote(request.getNote());
+            holding.setIsActive(true);
+            holdingMapper.insert(holding);
+        }
 
         // 立即获取行情
         marketDataService.refreshSymbols(List.of(holding.getSymbol()));
@@ -95,7 +108,6 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         if (request.getQuantity() != null) holding.setQuantity(request.getQuantity());
         if (request.getCostPrice() != null) holding.setCostPrice(request.getCostPrice());
         if (request.getPriceCurrency() != null) holding.setPriceCurrency(request.getPriceCurrency());
-        if (request.getLotSize() != null) holding.setLotSize(request.getLotSize());
         if (request.getNote() != null) holding.setNote(request.getNote());
         holdingMapper.update(holding);
 
@@ -147,7 +159,6 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
         vo.setMarket(holding.getMarket());
         vo.setQuantity(holding.getQuantity());
         vo.setCostPrice(holding.getCostPrice());
-        vo.setLotSize(holding.getLotSize());
 
         // 优先使用行情缓存中的标的名称（来自 Yahoo Finance shortName）
         if (price != null && price.getSymbolName() != null && !price.getSymbolName().isEmpty()) {
@@ -163,18 +174,16 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
             vo.setPriceUpdatedAt(price.getFetchedAt());
             vo.setStale(price.getIsStale());
 
-            // 市值 = 数量 × 单价 × lot_size × cny汇率
+            // 市值 = 数量 × 单价 × cny汇率
             BigDecimal marketValue = holding.getQuantity()
-                    .multiply(price.getPrice())
-                    .multiply(BigDecimal.valueOf(holding.getLotSize()));
+                    .multiply(price.getPrice());
             BigDecimal marketValueCny = exchangeRateService.toCny(marketValue, price.getCurrency());
             vo.setMarketValueCny(marketValueCny);
 
             // 浮盈
             if (holding.getCostPrice() != null) {
                 BigDecimal costTotal = holding.getCostPrice()
-                        .multiply(holding.getQuantity())
-                        .multiply(BigDecimal.valueOf(holding.getLotSize()));
+                        .multiply(holding.getQuantity());
                 BigDecimal costCny = exchangeRateService.toCny(costTotal, holding.getPriceCurrency());
                 BigDecimal pnl = marketValueCny.subtract(costCny);
                 vo.setUnrealizedPnl(pnl);

@@ -28,6 +28,5 @@ public class CreateHoldingRequest {
     @NotBlank(message = "价格币种不能为空")
     private String priceCurrency;
 
-    private Integer lotSize = 1;
     private String note;
 }

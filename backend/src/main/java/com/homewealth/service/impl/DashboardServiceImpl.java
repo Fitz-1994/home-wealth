@@ -249,8 +249,7 @@ public class DashboardServiceImpl implements DashboardService {
             if (price == null) continue;
 
             BigDecimal mv = holding.getQuantity()
-                    .multiply(price.getPrice())
-                    .multiply(BigDecimal.valueOf(holding.getLotSize()));
+                    .multiply(price.getPrice());
             BigDecimal mvCny = exchangeRateService.toCny(mv, price.getCurrency());
             totalCny = totalCny.add(mvCny);
 
@@ -323,8 +322,7 @@ public class DashboardServiceImpl implements DashboardService {
                 MarketPriceCache price = priceMap.get(holding.getSymbol());
                 if (price == null) continue;
                 BigDecimal mv = holding.getQuantity()
-                        .multiply(price.getPrice())
-                        .multiply(BigDecimal.valueOf(holding.getLotSize()));
+                        .multiply(price.getPrice());
                 total = total.add(exchangeRateService.toCny(mv, price.getCurrency()));
             }
             return total;

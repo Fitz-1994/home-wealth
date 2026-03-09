@@ -15,7 +15,6 @@ public class InvestmentHolding {
     private BigDecimal quantity;
     private BigDecimal costPrice;
     private String priceCurrency;
-    private Integer lotSize;
     private Boolean isActive;
     private String note;
     private LocalDateTime createdAt;

@@ -13,12 +13,17 @@
         <result property="quantity" column="quantity"/>
         <result property="costPrice" column="cost_price"/>
         <result property="priceCurrency" column="price_currency"/>
-        <result property="lotSize" column="lot_size"/>
         <result property="isActive" column="is_active"/>
         <result property="note" column="note"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
+
+    <select id="findByAccountAndSymbol" resultMap="HoldingMap">
+        SELECT * FROM investment_holding
+        WHERE account_id = #{accountId} AND symbol = #{symbol} AND is_active = 1
+        LIMIT 1
+    </select>
 
     <select id="findById" resultMap="HoldingMap">
         SELECT * FROM investment_holding WHERE id = #{id} AND is_active = 1
@@ -42,9 +47,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO investment_holding
-            (account_id, user_id, symbol, symbol_name, market, quantity, cost_price, price_currency, lot_size, note)
+            (account_id, user_id, symbol, symbol_name, market, quantity, cost_price, price_currency, note)
         VALUES
-            (#{accountId}, #{userId}, #{symbol}, #{symbolName}, #{market}, #{quantity}, #{costPrice}, #{priceCurrency}, #{lotSize}, #{note})
+            (#{accountId}, #{userId}, #{symbol}, #{symbolName}, #{market}, #{quantity}, #{costPrice}, #{priceCurrency}, #{note})
     </insert>
 
     <update id="update">
@@ -53,7 +58,6 @@
             quantity       = #{quantity},
             cost_price     = #{costPrice},
             price_currency = #{priceCurrency},
-            lot_size       = #{lotSize},
             note           = #{note},
             updated_at     = NOW()
         WHERE id = #{id} AND user_id = #{userId}

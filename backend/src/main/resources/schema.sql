@@ -106,7 +106,6 @@ CREATE TABLE IF NOT EXISTS `investment_holding` (
   `cost_price`     DECIMAL(20, 6)          COMMENT '成本价（可选）',
   `cost_currency`  VARCHAR(10)             COMMENT '成本价币种',
   `price_currency` VARCHAR(10)    NOT NULL COMMENT '行情价格币种',
-  `lot_size`       INT            NOT NULL DEFAULT 1 COMMENT '每手股数/合约乘数',
   `is_active`      TINYINT(1)     NOT NULL DEFAULT 1 COMMENT '是否持有中',
   `note`           VARCHAR(500)            COMMENT '备注',
   `created_at`     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,

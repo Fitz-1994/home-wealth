@@ -9,6 +9,7 @@ import java.util.List;
 @Mapper
 public interface InvestmentHoldingMapper {
     InvestmentHolding findById(@Param("id") Long id);
+    InvestmentHolding findByAccountAndSymbol(@Param("accountId") Long accountId, @Param("symbol") String symbol);
     List<InvestmentHolding> findByUserId(@Param("userId") Long userId,
                                           @Param("accountId") Long accountId,
                                           @Param("market") String market);

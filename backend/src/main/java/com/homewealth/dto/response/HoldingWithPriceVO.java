@@ -21,5 +21,4 @@ public class HoldingWithPriceVO {
     private BigDecimal priceChangePct;
     private LocalDateTime priceUpdatedAt;
     private boolean isStale;
-    private Integer lotSize;
 }

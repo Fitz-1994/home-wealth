@@ -29,7 +29,7 @@
     <!-- API Key 管理 -->
     <n-card title="API Key 管理" class="settings-card">
       <div style="margin-bottom:12px">
-        <p style="font-size:13px;color:#666">
+        <p class="settings-desc">
           API Key 可供外部服务（如 OpenClaw Skill）调用本系统接口。请求时在请求头携带 <code>X-API-Key: &lt;key&gt;</code>。
         </p>
       </div>
@@ -64,7 +64,7 @@
             </td>
           </tr>
           <tr v-if="!apiKeys.length">
-            <td colspan="5" style="text-align:center;color:#999">暂无 API Key</td>
+            <td colspan="5" class="empty-cell">暂无 API Key</td>
           </tr>
         </tbody>
       </n-table>
@@ -189,4 +189,6 @@ onMounted(loadApiKeys)
 .settings-view { padding: 16px; max-width: 800px; }
 .settings-view h2 { margin: 0 0 16px; }
 .settings-card { margin-bottom: 20px; }
+.settings-desc { font-size: 13px; color: var(--hw-text-muted); }
+.empty-cell { text-align: center; color: var(--hw-text-secondary); }
 </style>

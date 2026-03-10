@@ -62,6 +62,16 @@ docker-compose down
 
 数据存储在 Docker volume `mysql_data` 中，`down` 不会丢失数据。
 
+### 更新部署
+
+后续更新代码后，使用一键部署脚本（只重新构建后端和前端，不动 MySQL）：
+
+```bash
+./deploy.sh
+```
+
+脚本会自动执行：`git pull` → 确认 MySQL 健康 → 重新构建并重启 backend/frontend。
+
 ## 本地开发
 
 ### 后端

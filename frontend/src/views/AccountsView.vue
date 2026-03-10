@@ -249,8 +249,8 @@ onMounted(loadAccounts)
 .account-name { font-weight: 500; }
 .account-value { margin: 6px 0 4px; }
 .value-cny { font-size: 20px; font-weight: 600; color: var(--n-text-color); }
-.value-empty { font-size: 16px; color: #999; }
-.account-currency { font-size: 12px; color: #999; margin-bottom: 4px; }
-.account-desc { font-size: 12px; color: #666; margin-bottom: 8px; }
+.value-empty { font-size: 16px; color: var(--hw-text-secondary); }
+.account-currency { font-size: 12px; color: var(--hw-text-secondary); margin-bottom: 4px; }
+.account-desc { font-size: 12px; color: var(--hw-text-muted); margin-bottom: 8px; }
 .account-actions { display: flex; gap: 4px; }
 </style>

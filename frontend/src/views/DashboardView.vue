@@ -224,7 +224,7 @@ onMounted(() => {
 .header-actions { display: flex; gap: 8px; }
 
 .overview-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.overview-card .card-label { font-size: 12px; color: #999; margin-bottom: 4px; }
+.overview-card .card-label { font-size: 12px; color: var(--hw-text-secondary); margin-bottom: 4px; }
 .overview-card .card-value { font-size: 20px; font-weight: 600; }
 .overview-card.net-asset .card-value { color: #18a058; }
 
@@ -234,13 +234,13 @@ onMounted(() => {
 @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
 
 .holding-rank { display: flex; flex-direction: column; gap: 12px; }
-.rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-.rank-no { width: 24px; font-weight: bold; color: #999; }
+.rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--hw-border); }
+.rank-no { width: 24px; font-weight: bold; color: var(--hw-text-secondary); }
 .rank-info { flex: 1; min-width: 0; }
 .rank-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rank-market { font-size: 12px; color: #999; }
+.rank-market { font-size: 12px; color: var(--hw-text-secondary); }
 .rank-value { text-align: right; }
-.rank-ratio { font-size: 11px; color: #999; }
+.rank-ratio { font-size: 11px; color: var(--hw-text-secondary); }
 .rank-change { width: 64px; text-align: right; font-weight: 500; }
 .rank-change.up { color: #d03050; }
 .rank-change.down { color: #18a058; }

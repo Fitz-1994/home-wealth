@@ -29,7 +29,7 @@ request.interceptors.response.use(
     return data.data
   },
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
       const authStore = useAuthStore()
       authStore.logout()
       router.push('/login')

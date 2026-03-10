@@ -1,3 +1,9 @@
+/* Global base text color — ensures plain HTML elements (h1-h6, p, span, etc.) follow theme */
+body {
+  color: var(--hw-text);
+  transition: color 0.2s;
+}
+
 /* Light mode (default) */
 :root {
   --hw-sidebar-bg: #ffffff;
@@ -5,8 +11,10 @@
   --hw-page-bg: #f5f7fa;
   --hw-text: #333333;
   --hw-text-muted: #666666;
+  --hw-text-secondary: #999999;
   --hw-hover-bg: #f5f5f5;
   --hw-nav-inactive: #aaaaaa;
+  --hw-bg-secondary: #f5f5f5;
 }
 
 /* Dark mode */
@@ -16,6 +24,8 @@ html.dark {
   --hw-page-bg: #101014;
   --hw-text: rgba(255, 255, 255, 0.82);
   --hw-text-muted: rgba(255, 255, 255, 0.52);
+  --hw-text-secondary: rgba(255, 255, 255, 0.38);
   --hw-hover-bg: rgba(255, 255, 255, 0.06);
   --hw-nav-inactive: rgba(255, 255, 255, 0.38);
+  --hw-bg-secondary: rgba(255, 255, 255, 0.06);
 }

@@ -2,6 +2,7 @@ package com.homewealth.service.impl;
 
 import com.homewealth.mapper.InvestmentHoldingMapper;
 import com.homewealth.mapper.MarketPriceCacheMapper;
+import com.homewealth.market.ChinaFundFetcher;
 import com.homewealth.market.MarketQuote;
 import com.homewealth.market.SinaFinanceFetcher;
 import com.homewealth.market.YahooFinanceFetcher;
@@ -25,6 +26,7 @@ public class MarketDataServiceImpl implements MarketDataService {
     private final InvestmentHoldingMapper holdingMapper;
     private final YahooFinanceFetcher yahooFetcher;
     private final SinaFinanceFetcher sinaFetcher;
+    private final ChinaFundFetcher fundFetcher;
     private final ExchangeRateService exchangeRateService;
 
     @Override
@@ -54,10 +56,24 @@ public class MarketDataServiceImpl implements MarketDataService {
     @Override
     public void refreshSymbols(List<String> symbols) {
         log.info("Refreshing market prices for {} symbols", symbols.size());
-        Map<String, MarketQuote> quotes = yahooFetcher.fetchQuotes(symbols);
+
+        // 分离公募基金和其他标的
+        List<String> fundSymbols = symbols.stream().filter(this::isFundSymbol).toList();
+        List<String> yahooSymbols = symbols.stream().filter(s -> !isFundSymbol(s)).toList();
+
+        // 获取 Yahoo 行情
+        Map<String, MarketQuote> quotes = new HashMap<>();
+        if (!yahooSymbols.isEmpty()) {
+            quotes.putAll(yahooFetcher.fetchQuotes(yahooSymbols));
+        }
+
+        // 获取公募基金净值
+        if (!fundSymbols.isEmpty()) {
+            quotes.putAll(fundFetcher.fetchQuotes(fundSymbols));
+        }
 
         // 对 A股/港股 额外获取中文名称
-        List<String> cnHkSymbols = symbols.stream()
+        List<String> cnHkSymbols = yahooSymbols.stream()
                 .filter(s -> s.endsWith(".SS") || s.endsWith(".SZ") || s.endsWith(".HK"))
                 .toList();
         Map<String, String> chineseNames = cnHkSymbols.isEmpty()
@@ -107,7 +123,12 @@ public class MarketDataServiceImpl implements MarketDataService {
         }
     }
 
+    private boolean isFundSymbol(String symbol) {
+        return symbol != null && symbol.matches("\\d{6}");
+    }
+
     private String inferMarket(String symbol) {
+        if (isFundSymbol(symbol)) return "CN_FUND";
         if (symbol.endsWith("=X")) return "FX";
         if (symbol.endsWith(".SS") || symbol.endsWith(".SZ")) return "CN_A";
         if (symbol.endsWith(".HK") && symbol.contains("C") || symbol.endsWith(".HK") && symbol.contains("P")) return "HK_OPT";

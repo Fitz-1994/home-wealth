@@ -83,10 +83,13 @@
     </n-modal>
 
     <!-- 更新余额对话框 -->
-    <n-modal v-model:show="showRecordDialog" preset="dialog" title="更新账户余额">
+    <n-modal v-model:show="showRecordDialog" preset="dialog" :title="`更新余额 — ${selectedAccount?.accountName}`">
+      <n-alert v-if="selectedAccount?.assetCategory === 'LIABILITY'" type="info" style="margin-bottom: 12px" :show-icon="true">
+        负债账户请录入<strong>欠款金额（正数）</strong>，例如信用卡欠款 50,000 元则输入 50000。
+      </n-alert>
       <n-form :model="recordForm" label-placement="left" label-width="80">
-        <n-form-item label="金额" required>
-          <n-input-number v-model:value="recordForm.amount" :precision="2" style="width:100%" />
+        <n-form-item :label="selectedAccount?.assetCategory === 'LIABILITY' ? '欠款金额' : '金额'" required>
+          <n-input-number v-model:value="recordForm.amount" :precision="2" :min="0" placeholder="请输入金额" style="width:100%" />
         </n-form-item>
         <n-form-item label="币种">
           <n-select v-model:value="recordForm.currency" :options="currencyOptions" />
@@ -126,7 +129,7 @@ const selectedAccount = ref<any>(null)
 const categories = Object.entries(ASSET_CATEGORY_LABELS).map(([key, label]) => ({ key, label }))
 
 const accountForm = ref({ accountName: '', accountType: 'REGULAR', assetCategory: 'LIQUID', currency: 'CNY', description: '' })
-const recordForm = ref({ amount: 0, currency: 'CNY', recordDate: dayjs().format('YYYY-MM-DD'), note: '' })
+const recordForm = ref({ amount: null as number | null, currency: 'CNY', recordDate: dayjs().format('YYYY-MM-DD'), note: '' })
 
 const accountTypeOptions = [
   { label: '普通账户', value: 'REGULAR' },
@@ -212,7 +215,7 @@ async function deleteAccount(id: number) {
 
 function openUpdateRecord(account: any) {
   selectedAccount.value = account
-  recordForm.value = { amount: 0, currency: account.currency, recordDate: dayjs().format('YYYY-MM-DD'), note: '' }
+  recordForm.value = { amount: null, currency: account.currency, recordDate: dayjs().format('YYYY-MM-DD'), note: '' }
   showRecordDialog.value = true
 }
 
@@ -222,6 +225,7 @@ async function submitRecord() {
     await accountsApi.addRecord(selectedAccount.value.id, recordForm.value)
     message.success('余额已更新')
     showRecordDialog.value = false
+    await loadAccounts()
   } catch (e: any) {
     message.error(e.message)
   } finally {

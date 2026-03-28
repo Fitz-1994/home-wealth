@@ -6,5 +6,6 @@ public enum MarketType {
     US,       // 美股
     HK_OPT,  // 港股期权
     US_OPT,  // 美股期权（OCC格式）
-    FX        // 外汇/汇率（USDCNY=X 格式）
+    FX,       // 外汇/汇率（USDCNY=X 格式）
+    CN_FUND   // 公募基金（6位基金代码，如 006327）
 }

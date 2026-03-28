@@ -2,6 +2,7 @@ package com.homewealth.service.impl;
 
 import com.homewealth.mapper.*;
 import com.homewealth.model.*;
+import com.homewealth.model.InvestmentCashBalance;
 import com.homewealth.service.ExchangeRateService;
 import com.homewealth.service.MarketDataService;
 import com.homewealth.service.SnapshotService;
@@ -26,6 +27,7 @@ public class SnapshotServiceImpl implements SnapshotService {
     private final RegularAccountRecordMapper recordMapper;
     private final InvestmentHoldingMapper holdingMapper;
     private final MarketPriceCacheMapper priceCacheMapper;
+    private final InvestmentCashBalanceMapper cashBalanceMapper;
     private final ExchangeRateService exchangeRateService;
     private final MarketDataService marketDataService;
     private final UserMapper userMapper;
@@ -88,6 +90,14 @@ public class SnapshotServiceImpl implements SnapshotService {
                                 .multiply(holding.getQuantity());
                         totalCost = totalCost.add(exchangeRateService.toCny(cost, holding.getPriceCurrency()));
                     }
+                }
+
+                // 投资账户现金余额
+                List<InvestmentCashBalance> cashBalances = cashBalanceMapper.findByAccountId(account.getId());
+                for (InvestmentCashBalance cash : cashBalances) {
+                    BigDecimal cashCny = exchangeRateService.toCny(cash.getAmount(), cash.getCurrency());
+                    investment = investment.add(cashCny);
+                    other = other.add(cashCny);
                 }
             }
         }

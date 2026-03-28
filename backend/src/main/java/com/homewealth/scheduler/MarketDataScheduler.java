@@ -36,6 +36,13 @@ public class MarketDataScheduler {
         marketDataService.refreshAllActiveHoldings();
     }
 
+    // 公募基金净值确认后更新（工作日 21:30，QDII 基金可能延迟但会在下一轮更新）
+    @Scheduled(cron = "0 30 21 * * MON-FRI", zone = "Asia/Shanghai")
+    public void updateFundNAV() {
+        log.info("[Scheduler] Updating mutual fund NAV...");
+        marketDataService.refreshAllActiveHoldings();
+    }
+
     // 汇率每日 08:00 更新
     @Scheduled(cron = "0 0 8 * * *", zone = "Asia/Shanghai")
     public void updateExchangeRates() {

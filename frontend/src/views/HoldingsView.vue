@@ -28,86 +28,142 @@
       />
     </div>
 
-    <n-spin :show="loading">
-      <n-empty v-if="!aggregatedHoldings.length" description="暂无持仓，请添加" />
-      <div v-else class="holdings-grid">
-        <n-card
-          v-for="g in aggregatedHoldings"
-          :key="g.key"
-          class="holding-card"
-          hoverable
-        >
-          <div class="holding-header">
+    <!-- 账户现金余额 -->
+    <div v-if="cashBalances.length" class="cash-section">
+      <div class="cash-header">
+        <h3 style="margin:0;font-size:15px">账户现金</h3>
+        <n-button size="small" @click="openCashDialog()">添加现金</n-button>
+      </div>
+      <div class="cash-grid">
+        <n-card v-for="c in cashBalances" :key="c.id" class="cash-card" size="small">
+          <div class="cash-info">
             <div>
-              <div class="symbol-name">{{ g.symbolName || g.symbol }}</div>
-              <div class="symbol-code">{{ g.symbol }} · {{ marketLabel(g.market) }}</div>
-              <div class="account-tag">{{ accountName(g.accountId) }}</div>
+              <span class="cash-currency">{{ c.currency }}</span>
+              <span class="cash-account">{{ accountName(c.accountId) }}</span>
             </div>
-            <div class="change-pct" :class="(g.priceChangePct ?? 0) >= 0 ? 'up' : 'down'">
-              {{ formatPct(g.priceChangePct) }}
-            </div>
+            <div class="cash-amount">{{ formatNumber(c.amount, 2) }}</div>
           </div>
-
-          <n-divider style="margin: 10px 0" />
-
-          <div class="holding-stats">
-            <div class="stat-item">
-              <div class="stat-label">持仓数量</div>
-              <div class="stat-value">{{ g.totalQuantity }}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">现价</div>
-              <div class="stat-value">{{ g.priceCurrency }} {{ g.currentPrice }}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">市值</div>
-              <div class="stat-value primary">{{ formatCny(g.totalMarketValueCny) }}</div>
-            </div>
-            <div class="stat-item" v-if="g.totalUnrealizedPnl != null">
-              <div class="stat-label">浮盈亏</div>
-              <div class="stat-value" :class="g.totalUnrealizedPnl >= 0 ? 'up' : 'down'">
-                {{ formatCny(g.totalUnrealizedPnl) }}
-                <span style="font-size:11px">（{{ formatPct(g.unrealizedPnlPct) }}）</span>
-              </div>
-            </div>
-          </div>
-
-          <n-alert v-if="g.isStale" type="warning" size="small" :show-icon="false" style="margin-top:8px">
-            行情数据可能不是最新
-          </n-alert>
-
-          <!-- 多笔明细展开 -->
-          <template v-if="g.items.length > 1">
-            <div class="expand-toggle" @click="toggleExpand(g.key)">
-              <span>{{ expandedKeys.has(g.key) ? '▲' : '▼' }} {{ g.items.length }} 笔明细</span>
-            </div>
-            <div v-if="expandedKeys.has(g.key)" class="sub-items">
-              <div v-for="h in g.items" :key="h.id" class="sub-item">
-                <span class="sub-qty">× {{ h.quantity }}</span>
-                <span v-if="h.costPrice" class="sub-cost">成本 {{ h.priceCurrency }} {{ h.costPrice }}</span>
-                <span v-if="h.note" class="sub-note">{{ h.note }}</span>
-                <div class="sub-actions">
-                  <n-button text size="tiny" @click="editHolding(h)">编辑</n-button>
-                  <n-popconfirm @positive-click="closeHolding(h.id)">
-                    <template #trigger><n-button text size="tiny" type="error">清仓</n-button></template>
-                    确认清仓这笔 {{ h.quantity }} 股？
-                  </n-popconfirm>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- 单笔直接显示操作按钮 -->
-          <div v-else class="holding-actions">
-            <n-button text size="small" @click="editHolding(g.items[0])">编辑</n-button>
-            <n-popconfirm @positive-click="closeHolding(g.items[0].id)">
-              <template #trigger>
-                <n-button text size="small" type="error">清仓</n-button>
-              </template>
-              确认清仓 {{ g.symbolName || g.symbol }}？
+          <div class="cash-cny">≈ {{ formatCny(c.cnyAmount) }}</div>
+          <div v-if="c.note" class="cash-note">{{ c.note }}</div>
+          <div class="cash-actions">
+            <n-button text size="tiny" @click="openCashDialog(c)">编辑</n-button>
+            <n-popconfirm @positive-click="deleteCash(c)">
+              <template #trigger><n-button text size="tiny" type="error">删除</n-button></template>
+              确认删除 {{ c.currency }} 现金记录？
             </n-popconfirm>
           </div>
         </n-card>
+      </div>
+      <n-divider style="margin: 8px 0 16px" />
+    </div>
+    <div v-else-if="investmentAccountOptions.length" class="cash-section">
+      <div class="cash-header">
+        <h3 style="margin:0;font-size:15px">账户现金</h3>
+        <n-button size="small" @click="openCashDialog()">添加现金</n-button>
+      </div>
+      <div style="color:var(--hw-text-muted);font-size:13px;margin-bottom:16px">暂无现金记录</div>
+    </div>
+
+    <!-- 现金编辑对话框 -->
+    <n-modal v-model:show="showCashDialog" preset="dialog" :title="editingCash ? '编辑现金' : '添加现金'">
+      <n-form :model="cashForm" label-placement="left" label-width="80">
+        <n-form-item label="投资账户" required>
+          <n-select v-model:value="cashForm.accountId" :options="investmentAccountOptions" :disabled="!!editingCash" />
+        </n-form-item>
+        <n-form-item label="币种" required>
+          <n-select v-model:value="cashForm.currency" :options="currencyOptions" :disabled="!!editingCash" />
+        </n-form-item>
+        <n-form-item label="金额" required>
+          <n-input-number v-model:value="cashForm.amount" :precision="2" style="width:100%" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="cashForm.note" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button @click="showCashDialog = false">取消</n-button>
+        <n-button type="primary" :loading="cashSubmitting" @click="submitCash">保存</n-button>
+      </template>
+    </n-modal>
+
+    <n-spin :show="loading">
+      <n-empty v-if="!aggregatedHoldings.length" description="暂无持仓，请添加" />
+      <div v-else class="holdings-list">
+        <!-- 表头 -->
+        <div class="list-header">
+          <div class="col-rank">#</div>
+          <div class="col-name">标的</div>
+          <div class="col-qty">数量</div>
+          <div class="col-price">现价</div>
+          <div class="col-value">市值(CNY)</div>
+          <div class="col-pnl">浮盈亏</div>
+          <div class="col-change">涨跌</div>
+          <div class="col-actions">操作</div>
+        </div>
+        <!-- 列表行 -->
+        <div v-for="(g, idx) in aggregatedHoldings" :key="g.key" class="list-row-wrap">
+          <div class="list-row" :class="{ 'stale': g.isStale }">
+            <div class="col-rank">{{ idx + 1 }}</div>
+            <div class="col-name">
+              <div class="symbol-name">{{ g.symbolName || g.symbol }}</div>
+              <div class="symbol-meta">{{ g.symbol }} · {{ marketLabel(g.market) }}
+                <span class="account-tag">{{ accountName(g.accountId) }}</span>
+              </div>
+            </div>
+            <div class="col-qty">{{ g.totalQuantity }}</div>
+            <div class="col-price">{{ g.priceCurrency }} {{ g.currentPrice }}</div>
+            <div class="col-value">{{ formatCny(g.totalMarketValueCny) }}</div>
+            <div class="col-pnl" v-if="g.totalUnrealizedPnl != null" :class="g.totalUnrealizedPnl >= 0 ? 'up' : 'down'">
+              {{ formatCny(g.totalUnrealizedPnl) }}
+              <span class="pnl-pct">{{ formatPct(g.unrealizedPnlPct) }}</span>
+            </div>
+            <div class="col-pnl" v-else>—</div>
+            <div class="col-change" :class="(g.priceChangePct ?? 0) >= 0 ? 'up' : 'down'">
+              {{ formatPct(g.priceChangePct) }}
+            </div>
+            <div class="col-actions">
+              <template v-if="g.items.length > 1">
+                <n-button text size="tiny" @click="toggleExpand(g.key)">
+                  {{ expandedKeys.has(g.key) ? '收起' : '明细' }}({{ g.items.length }})
+                </n-button>
+              </template>
+              <template v-else>
+                <n-button text size="tiny" @click="editHolding(g.items[0])">编辑</n-button>
+                <n-popconfirm @positive-click="closeHolding(g.items[0].id)">
+                  <template #trigger><n-button text size="tiny" type="error">清仓</n-button></template>
+                  确认清仓 {{ g.symbolName || g.symbol }}？
+                </n-popconfirm>
+              </template>
+            </div>
+          </div>
+          <!-- 多笔明细展开 -->
+          <div v-if="g.items.length > 1 && expandedKeys.has(g.key)" class="sub-rows">
+            <div v-for="h in g.items" :key="h.id" class="sub-row">
+              <div class="col-rank"></div>
+              <div class="col-name sub-label">
+                <span v-if="h.note">{{ h.note }}</span>
+                <span v-else class="sub-muted">第{{ g.items.indexOf(h) + 1 }}笔</span>
+              </div>
+              <div class="col-qty">{{ h.quantity }}</div>
+              <div class="col-price">
+                <span v-if="h.costPrice">成本 {{ h.costPrice }}</span>
+              </div>
+              <div class="col-value">{{ formatCny(h.marketValueCny) }}</div>
+              <div class="col-pnl" v-if="h.unrealizedPnl != null" :class="h.unrealizedPnl >= 0 ? 'up' : 'down'">
+                {{ formatCny(h.unrealizedPnl) }}
+              </div>
+              <div class="col-pnl" v-else>—</div>
+              <div class="col-change"></div>
+              <div class="col-actions">
+                <n-button text size="tiny" @click="editHolding(h)">编辑</n-button>
+                <n-popconfirm @positive-click="closeHolding(h.id)">
+                  <template #trigger><n-button text size="tiny" type="error">清仓</n-button></template>
+                  确认清仓这笔 {{ h.quantity }} 股？
+                </n-popconfirm>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </n-spin>
 
@@ -224,9 +280,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
-import { holdingsApi } from '@/api/holdings'
+import { holdingsApi, cashBalanceApi } from '@/api/holdings'
 import { accountsApi } from '@/api/accounts'
-import { formatCny, formatPct, MARKET_TYPE_LABELS } from '@/utils/currency'
+import { formatCny, formatNumber, formatPct, MARKET_TYPE_LABELS } from '@/utils/currency'
 
 const message = useMessage()
 const loading = ref(false)
@@ -392,7 +448,9 @@ const aggregatedHoldings = computed(() => {
       g.unrealizedPnlPct = +((g.totalUnrealizedPnl / g.totalCostCny) * 100).toFixed(2)
     }
   }
-  return [...groups.values()]
+  const result = [...groups.values()]
+  result.sort((a, b) => (b.totalMarketValueCny || 0) - (a.totalMarketValueCny || 0))
+  return result
 })
 
 const marketLabel = (key: string) => MARKET_TYPE_LABELS[key] || key
@@ -498,9 +556,86 @@ async function closeHolding(id: number) {
   }
 }
 
-onMounted(() => {
+// ── 现金余额 ──
+const cashBalances = ref<any[]>([])
+const showCashDialog = ref(false)
+const editingCash = ref<any>(null)
+const cashSubmitting = ref(false)
+const cashForm = ref({
+  accountId: null as number | null,
+  currency: 'USD',
+  amount: 0,
+  note: ''
+})
+
+async function loadCashBalances() {
+  const accounts = allAccounts.value.filter(a => a.accountType === 'INVESTMENT')
+  const all: any[] = []
+  for (const acct of accounts) {
+    try {
+      const list = await cashBalanceApi.list(acct.id) as any[]
+      all.push(...list)
+    } catch { /* ignore */ }
+  }
+  cashBalances.value = all
+}
+
+function openCashDialog(existing?: any) {
+  editingCash.value = existing || null
+  if (existing) {
+    cashForm.value = {
+      accountId: existing.accountId,
+      currency: existing.currency,
+      amount: existing.amount,
+      note: existing.note || ''
+    }
+  } else {
+    cashForm.value = {
+      accountId: investmentAccountOptions.value[0]?.value ?? null,
+      currency: 'USD',
+      amount: 0,
+      note: ''
+    }
+  }
+  showCashDialog.value = true
+}
+
+async function submitCash() {
+  if (!cashForm.value.accountId || !cashForm.value.currency) {
+    message.warning('请选择账户和币种')
+    return
+  }
+  cashSubmitting.value = true
+  try {
+    await cashBalanceApi.upsert(cashForm.value.accountId, {
+      currency: cashForm.value.currency,
+      amount: cashForm.value.amount,
+      note: cashForm.value.note
+    })
+    message.success(editingCash.value ? '现金余额已更新' : '现金余额已添加')
+    showCashDialog.value = false
+    await loadCashBalances()
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
+  } finally {
+    cashSubmitting.value = false
+  }
+}
+
+async function deleteCash(c: any) {
+  try {
+    await cashBalanceApi.delete(c.accountId, c.id)
+    message.success('已删除')
+    await loadCashBalances()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
+}
+
+onMounted(async () => {
+  await loadAccounts()
   loadHoldings()
-  loadAccounts()
+  loadCashBalances()
 })
 </script>
 
@@ -528,28 +663,65 @@ onMounted(() => {
 .parse-table th { text-align: left; padding: 6px 8px; background: var(--hw-bg-secondary); font-weight: 600; white-space: nowrap; }
 .parse-table td { padding: 4px 8px; border-top: 1px solid var(--hw-border); vertical-align: middle; }
 .filters { display: flex; gap: 12px; margin-bottom: 16px; }
-.holdings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-.holding-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.symbol-name { font-size: 15px; font-weight: 600; }
-.symbol-code { font-size: 12px; color: var(--hw-text-secondary); margin-top: 2px; }
-.account-tag { display: inline-block; font-size: 11px; color: var(--hw-text-muted); background: var(--hw-border); border-radius: 4px; padding: 1px 6px; margin-top: 4px; }
-.change-pct { font-size: 16px; font-weight: 600; }
-.change-pct.up { color: #d03050; }
-.change-pct.down { color: #18a058; }
-.holding-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.stat-label { font-size: 11px; color: var(--hw-text-secondary); margin-bottom: 2px; }
-.stat-value { font-size: 14px; font-weight: 500; }
-.stat-value.primary { color: #18a058; }
-.stat-value.up { color: #d03050; }
-.stat-value.down { color: #18a058; }
-.holding-actions { display: flex; gap: 8px; margin-top: 10px; }
 .validated-name { font-size: 12px; color: #18a058; margin-top: 4px; }
-.expand-toggle { font-size: 12px; color: var(--hw-text-secondary); margin-top: 10px; cursor: pointer; user-select: none; }
-.expand-toggle:hover { color: #18a058; }
-.sub-items { margin-top: 6px; border-top: 1px solid var(--hw-border); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
-.sub-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--hw-text-muted); }
-.sub-qty { font-weight: 600; color: var(--hw-text); min-width: 50px; }
-.sub-cost { color: var(--hw-text-secondary); }
-.sub-note { color: var(--hw-text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub-actions { margin-left: auto; display: flex; gap: 4px; }
+
+/* 列表布局 */
+.holdings-list { border: 1px solid var(--hw-border); border-radius: 8px; overflow: hidden; }
+.list-header, .list-row, .sub-row {
+  display: grid;
+  grid-template-columns: 40px 1.5fr 0.7fr 0.8fr 1fr 1fr 0.6fr 0.7fr;
+  align-items: center;
+  padding: 10px 12px;
+  gap: 8px;
+}
+.list-header {
+  background: var(--hw-bg-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hw-text-secondary);
+  border-bottom: 1px solid var(--hw-border);
+}
+.list-row {
+  border-bottom: 1px solid var(--hw-border);
+  font-size: 13px;
+  transition: background .15s;
+}
+.list-row:hover { background: var(--hw-bg-secondary); }
+.list-row.stale { opacity: 0.7; }
+.list-row-wrap:last-child .list-row:not(:has(+ .sub-rows)),
+.list-row-wrap:last-child .sub-rows .sub-row:last-child { border-bottom: none; }
+.col-rank { font-size: 13px; font-weight: 600; color: var(--hw-text-muted); text-align: center; }
+.col-name .symbol-name { font-size: 14px; font-weight: 600; }
+.col-name .symbol-meta { font-size: 11px; color: var(--hw-text-secondary); margin-top: 2px; }
+.account-tag { display: inline-block; font-size: 10px; color: var(--hw-text-muted); background: var(--hw-border); border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+.col-value { font-weight: 600; }
+.col-pnl .pnl-pct { font-size: 11px; margin-left: 2px; }
+.col-change { font-weight: 600; }
+.up { color: #d03050; }
+.down { color: #18a058; }
+.col-actions { display: flex; gap: 4px; justify-content: flex-end; }
+
+/* 子行明细 */
+.sub-rows { background: var(--hw-bg-secondary); }
+.sub-row {
+  font-size: 12px;
+  color: var(--hw-text-secondary);
+  border-bottom: 1px solid var(--hw-border);
+  padding: 6px 12px;
+}
+.sub-label { font-size: 12px; }
+.sub-muted { color: var(--hw-text-muted); }
+
+/* 账户现金 */
+.cash-section { margin-bottom: 8px; }
+.cash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.cash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.cash-card { }
+.cash-info { display: flex; justify-content: space-between; align-items: center; }
+.cash-currency { font-weight: 600; font-size: 14px; }
+.cash-account { font-size: 11px; color: var(--hw-text-muted); background: var(--hw-border); border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+.cash-amount { font-size: 15px; font-weight: 600; }
+.cash-cny { font-size: 12px; color: var(--hw-text-secondary); margin-top: 4px; }
+.cash-note { font-size: 11px; color: var(--hw-text-muted); margin-top: 2px; }
+.cash-actions { display: flex; gap: 8px; margin-top: 6px; }
 </style>

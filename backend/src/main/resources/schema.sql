@@ -204,6 +204,27 @@ CREATE TABLE IF NOT EXISTS `daily_investment_snapshot` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日投资资产快照表';
 
 -- ============================================
+-- 10. 投资账户现金余额表
+-- ============================================
+-- 每个投资账户可持有多币种现金，每币种一条记录
+CREATE TABLE IF NOT EXISTS `investment_cash_balance` (
+  `id`          BIGINT         NOT NULL AUTO_INCREMENT,
+  `account_id`  BIGINT         NOT NULL COMMENT '关联投资账户ID',
+  `user_id`     BIGINT         NOT NULL COMMENT '所属用户',
+  `currency`    VARCHAR(10)    NOT NULL COMMENT '币种（USD/HKD/CNY等）',
+  `amount`      DECIMAL(20, 4) NOT NULL COMMENT '现金金额',
+  `cny_rate`    DECIMAL(15, 6) NOT NULL DEFAULT 1.000000 COMMENT '记录时对CNY汇率',
+  `cny_amount`  DECIMAL(20, 4) NOT NULL COMMENT '折算人民币金额',
+  `note`        VARCHAR(500)            COMMENT '备注',
+  `created_at`  DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_account_currency` (`account_id`, `currency`),
+  KEY `idx_user_id` (`user_id`),
+  CONSTRAINT `fk_cash_account` FOREIGN KEY (`account_id`) REFERENCES `asset_account` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资账户现金余额表';
+
+-- ============================================
 -- 初始化种子汇率数据（定时任务启动后会自动更新）
 -- ============================================
 INSERT IGNORE INTO `exchange_rate` (`from_currency`, `to_currency`, `rate`, `rate_date`, `source`) VALUES

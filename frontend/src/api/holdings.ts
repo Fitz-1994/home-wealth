@@ -27,3 +27,14 @@ export const holdingsApi = {
   batchImport: (holdings: any[]) =>
     request.post('/holdings/batch', holdings)
 }
+
+export const cashBalanceApi = {
+  list: (accountId: number) =>
+    request.get(`/accounts/${accountId}/cash-balances`),
+
+  upsert: (accountId: number, data: { currency: string; amount: number; note?: string }) =>
+    request.post(`/accounts/${accountId}/cash-balances`, data),
+
+  delete: (accountId: number, id: number) =>
+    request.delete(`/accounts/${accountId}/cash-balances/${id}`)
+}

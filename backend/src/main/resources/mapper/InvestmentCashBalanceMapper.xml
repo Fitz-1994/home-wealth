@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.InvestmentCashBalanceMapper">
+
+    <resultMap id="CashBalanceMap" type="com.homewealth.model.InvestmentCashBalance">
+        <id property="id" column="id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="currency" column="currency"/>
+        <result property="amount" column="amount"/>
+        <result property="cnyRate" column="cny_rate"/>
+        <result property="cnyAmount" column="cny_amount"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="CashBalanceMap">
+        SELECT * FROM investment_cash_balance WHERE id = #{id}
+    </select>
+
+    <select id="findByAccountAndCurrency" resultMap="CashBalanceMap">
+        SELECT * FROM investment_cash_balance
+        WHERE account_id = #{accountId} AND currency = #{currency}
+        LIMIT 1
+    </select>
+
+    <select id="findByAccountId" resultMap="CashBalanceMap">
+        SELECT * FROM investment_cash_balance
+        WHERE account_id = #{accountId}
+        ORDER BY currency ASC
+    </select>
+
+    <select id="findByUserId" resultMap="CashBalanceMap">
+        SELECT * FROM investment_cash_balance
+        WHERE user_id = #{userId}
+        ORDER BY account_id ASC, currency ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO investment_cash_balance
+            (account_id, user_id, currency, amount, cny_rate, cny_amount, note)
+        VALUES
+            (#{accountId}, #{userId}, #{currency}, #{amount}, #{cnyRate}, #{cnyAmount}, #{note})
+    </insert>
+
+    <update id="update">
+        UPDATE investment_cash_balance SET
+            amount     = #{amount},
+            cny_rate   = #{cnyRate},
+            cny_amount = #{cnyAmount},
+            note       = #{note},
+            updated_at = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM investment_cash_balance WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <delete id="deleteByAccountId">
+        DELETE FROM investment_cash_balance WHERE account_id = #{accountId}
+    </delete>
+
+</mapper>

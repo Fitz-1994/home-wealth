@@ -36,5 +36,6 @@ export const MARKET_TYPE_LABELS: Record<string, string> = {
   US: '美股',
   HK_OPT: '港股期权',
   US_OPT: '美股期权',
-  FX: '外汇'
+  FX: '外汇',
+  CN_FUND: '公募基金'
 }

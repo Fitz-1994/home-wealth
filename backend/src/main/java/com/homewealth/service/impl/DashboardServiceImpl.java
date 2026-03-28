@@ -3,6 +3,7 @@ package com.homewealth.service.impl;
 import com.homewealth.dto.response.*;
 import com.homewealth.mapper.*;
 import com.homewealth.model.*;
+import com.homewealth.model.InvestmentCashBalance;
 import com.homewealth.service.DashboardService;
 import com.homewealth.service.ExchangeRateService;
 import com.homewealth.service.MarketDataService;
@@ -26,6 +27,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final MarketPriceCacheMapper priceCacheMapper;
     private final DailyNetAssetSnapshotMapper netSnapshotMapper;
     private final DailyInvestmentSnapshotMapper invSnapshotMapper;
+    private final InvestmentCashBalanceMapper cashBalanceMapper;
     private final ExchangeRateService exchangeRateService;
     private final MarketDataService marketDataService;
 
@@ -241,7 +243,8 @@ public class DashboardServiceImpl implements DashboardService {
         List<String> symbols = holdings.stream().map(InvestmentHolding::getSymbol).distinct().toList();
         Map<String, MarketPriceCache> priceMap = marketDataService.getLatestPrices(symbols);
 
-        List<HoldingRankVO.HoldingRankItem> items = new ArrayList<>();
+        // 按 symbol 聚合同一标的在不同账户中的持仓
+        Map<String, HoldingRankVO.HoldingRankItem> aggregated = new LinkedHashMap<>();
         BigDecimal totalCny = BigDecimal.ZERO;
 
         for (InvestmentHolding holding : holdings) {
@@ -253,20 +256,27 @@ public class DashboardServiceImpl implements DashboardService {
             BigDecimal mvCny = exchangeRateService.toCny(mv, price.getCurrency());
             totalCny = totalCny.add(mvCny);
 
-            HoldingRankVO.HoldingRankItem item = new HoldingRankVO.HoldingRankItem();
-            item.setHoldingId(holding.getId());
-            item.setSymbol(holding.getSymbol());
-            // 优先使用行情缓存中的标的名称（来自 Yahoo Finance shortName）
-            item.setSymbolName(price.getSymbolName() != null && !price.getSymbolName().isEmpty()
-                    ? price.getSymbolName() : holding.getSymbolName());
-            item.setMarket(holding.getMarket());
-            item.setQuantity(holding.getQuantity());
-            item.setCurrentPrice(price.getPrice());
-            item.setPriceCurrency(price.getCurrency());
-            item.setMarketValueCny(mvCny);
-            item.setPriceChangePct(price.getChangePct());
-            items.add(item);
+            HoldingRankVO.HoldingRankItem existing = aggregated.get(holding.getSymbol());
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity().add(holding.getQuantity()));
+                existing.setMarketValueCny(existing.getMarketValueCny().add(mvCny));
+            } else {
+                HoldingRankVO.HoldingRankItem item = new HoldingRankVO.HoldingRankItem();
+                item.setHoldingId(holding.getId());
+                item.setSymbol(holding.getSymbol());
+                item.setSymbolName(price.getSymbolName() != null && !price.getSymbolName().isEmpty()
+                        ? price.getSymbolName() : holding.getSymbolName());
+                item.setMarket(holding.getMarket());
+                item.setQuantity(holding.getQuantity());
+                item.setCurrentPrice(price.getPrice());
+                item.setPriceCurrency(price.getCurrency());
+                item.setMarketValueCny(mvCny);
+                item.setPriceChangePct(price.getChangePct());
+                aggregated.put(holding.getSymbol(), item);
+            }
         }
+
+        List<HoldingRankVO.HoldingRankItem> items = new ArrayList<>(aggregated.values());
 
         // 按市值降序
         items.sort(Comparator.comparing(HoldingRankVO.HoldingRankItem::getMarketValueCny).reversed());
@@ -310,21 +320,27 @@ public class DashboardServiceImpl implements DashboardService {
             RegularAccountRecord record = recordMapper.findCurrentByAccountId(account.getId());
             return record != null ? record.getCnyAmount() : BigDecimal.ZERO;
         } else {
-            // INVESTMENT
-            List<InvestmentHolding> holdings = holdingMapper.findByUserId(userId, account.getId(), null);
-            if (holdings.isEmpty()) return BigDecimal.ZERO;
-
-            List<String> symbols = holdings.stream().map(InvestmentHolding::getSymbol).distinct().toList();
-            Map<String, MarketPriceCache> priceMap = marketDataService.getLatestPrices(symbols);
-
+            // INVESTMENT: holdings market value + cash balances
             BigDecimal total = BigDecimal.ZERO;
-            for (InvestmentHolding holding : holdings) {
-                MarketPriceCache price = priceMap.get(holding.getSymbol());
-                if (price == null) continue;
-                BigDecimal mv = holding.getQuantity()
-                        .multiply(price.getPrice());
-                total = total.add(exchangeRateService.toCny(mv, price.getCurrency()));
+
+            List<InvestmentHolding> holdings = holdingMapper.findByUserId(userId, account.getId(), null);
+            if (!holdings.isEmpty()) {
+                List<String> symbols = holdings.stream().map(InvestmentHolding::getSymbol).distinct().toList();
+                Map<String, MarketPriceCache> priceMap = marketDataService.getLatestPrices(symbols);
+                for (InvestmentHolding holding : holdings) {
+                    MarketPriceCache price = priceMap.get(holding.getSymbol());
+                    if (price == null) continue;
+                    BigDecimal mv = holding.getQuantity().multiply(price.getPrice());
+                    total = total.add(exchangeRateService.toCny(mv, price.getCurrency()));
+                }
             }
+
+            // Add cash balances
+            List<InvestmentCashBalance> cashBalances = cashBalanceMapper.findByAccountId(account.getId());
+            for (InvestmentCashBalance cash : cashBalances) {
+                total = total.add(exchangeRateService.toCny(cash.getAmount(), cash.getCurrency()));
+            }
+
             return total;
         }
     }

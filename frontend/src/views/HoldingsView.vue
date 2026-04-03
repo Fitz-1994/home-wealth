@@ -86,6 +86,70 @@
       </template>
     </n-modal>
 
+    <!-- 持仓分组 -->
+    <div class="group-section">
+      <div class="cash-header">
+        <h3 style="margin:0;font-size:15px">持仓分组</h3>
+        <n-button size="small" @click="openGroupDialog()">添加分组</n-button>
+      </div>
+      <n-empty v-if="!holdingGroups.length" description="暂无分组" style="padding:8px 0" />
+      <div v-else class="cash-grid">
+        <n-card v-for="g in holdingGroups" :key="g.id" class="cash-card" size="small">
+          <div class="group-title">{{ g.groupName }}</div>
+          <div v-if="g.note" class="cash-note">{{ g.note }}</div>
+          <div class="group-members">
+            <n-tag v-for="m in g.members" :key="m.symbol" size="small" :bordered="false" style="margin:2px">
+              {{ m.symbolName || m.symbol }}
+            </n-tag>
+            <span v-if="!g.members?.length" class="cash-note">暂无成员</span>
+          </div>
+          <div class="cash-actions">
+            <n-button text size="tiny" @click="openGroupDialog(g)">编辑</n-button>
+            <n-button text size="tiny" @click="openMemberDialog(g)">管理成员</n-button>
+            <n-popconfirm @positive-click="deleteGroup(g.id)">
+              <template #trigger><n-button text size="tiny" type="error">删除</n-button></template>
+              确认删除分组「{{ g.groupName }}」？成员将恢复为独立排行。
+            </n-popconfirm>
+          </div>
+        </n-card>
+      </div>
+      <n-divider style="margin: 8px 0 16px" />
+    </div>
+
+    <!-- 分组创建/编辑对话框 -->
+    <n-modal v-model:show="showGroupDialog" preset="dialog" :title="editingGroup ? '编辑分组' : '添加分组'">
+      <n-form :model="groupForm" label-placement="left" label-width="80">
+        <n-form-item label="分组名称" required>
+          <n-input v-model:value="groupForm.groupName" placeholder="如：恒生指数、中概互联" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="groupForm.note" />
+        </n-form-item>
+        <n-form-item v-if="!editingGroup" label="初始成员">
+          <n-select v-model:value="groupForm.symbols" :options="ungroupedSymbolOptions" multiple placeholder="选择标的（可选）" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button @click="showGroupDialog = false">取消</n-button>
+        <n-button type="primary" :loading="groupSubmitting" @click="submitGroup">保存</n-button>
+      </template>
+    </n-modal>
+
+    <!-- 成员管理对话框 -->
+    <n-modal v-model:show="showMemberDialog" preset="dialog" title="管理分组成员">
+      <div v-if="editingGroupForMembers" style="margin-bottom:12px;font-weight:600">{{ editingGroupForMembers.groupName }}</div>
+      <n-select
+        v-model:value="memberForm.symbols"
+        :options="memberSymbolOptions"
+        multiple
+        placeholder="选择要加入分组的标的"
+      />
+      <template #action>
+        <n-button @click="showMemberDialog = false">取消</n-button>
+        <n-button type="primary" :loading="memberSubmitting" @click="submitMembers">保存</n-button>
+      </template>
+    </n-modal>
+
     <n-spin :show="loading">
       <n-empty v-if="!aggregatedHoldings.length" description="暂无持仓，请添加" />
       <div v-else class="holdings-list">
@@ -280,7 +344,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
-import { holdingsApi, cashBalanceApi } from '@/api/holdings'
+import { holdingsApi, cashBalanceApi, holdingGroupApi } from '@/api/holdings'
 import { accountsApi } from '@/api/accounts'
 import { formatCny, formatNumber, formatPct, MARKET_TYPE_LABELS } from '@/utils/currency'
 
@@ -632,10 +696,135 @@ async function deleteCash(c: any) {
   }
 }
 
+// ── 持仓分组 ──
+const holdingGroups = ref<any[]>([])
+const showGroupDialog = ref(false)
+const showMemberDialog = ref(false)
+const editingGroup = ref<any>(null)
+const editingGroupForMembers = ref<any>(null)
+const groupSubmitting = ref(false)
+const memberSubmitting = ref(false)
+const groupForm = ref({ groupName: '', note: '', symbols: [] as string[] })
+const memberForm = ref({ symbols: [] as string[] })
+
+// 去重的标的列表（多个账户同一 symbol 只出现一次）
+const distinctSymbols = computed(() => {
+  const seen = new Map<string, any>()
+  for (const h of holdings.value as any[]) {
+    if (!seen.has(h.symbol)) seen.set(h.symbol, h)
+  }
+  return [...seen.values()]
+})
+
+// 已被分组的 symbol 集合
+const groupedSymbols = computed(() => {
+  const s = new Set<string>()
+  for (const g of holdingGroups.value) {
+    for (const m of g.members || []) s.add(m.symbol)
+  }
+  return s
+})
+
+// 未分组的标的选项（用于创建分组时选择初始成员）
+const ungroupedSymbolOptions = computed(() =>
+  distinctSymbols.value
+    .filter((h: any) => !groupedSymbols.value.has(h.symbol))
+    .map((h: any) => ({
+      label: `${h.symbolName || h.symbol} (${h.symbol})`,
+      value: h.symbol
+    }))
+)
+
+// 成员管理选项（当前组成员 + 未分组标的）
+const memberSymbolOptions = computed(() => {
+  const currentSymbols = new Set<string>(
+    (editingGroupForMembers.value?.members || []).map((m: any) => m.symbol)
+  )
+  return distinctSymbols.value
+    .filter((h: any) => currentSymbols.has(h.symbol) || !groupedSymbols.value.has(h.symbol))
+    .map((h: any) => ({
+      label: `${h.symbolName || h.symbol} (${h.symbol})`,
+      value: h.symbol
+    }))
+})
+
+async function loadGroups() {
+  try {
+    holdingGroups.value = await holdingGroupApi.list() as any[]
+  } catch { holdingGroups.value = [] }
+}
+
+function openGroupDialog(existing?: any) {
+  editingGroup.value = existing || null
+  groupForm.value = existing
+    ? { groupName: existing.groupName, note: existing.note || '', symbols: [] }
+    : { groupName: '', note: '', symbols: [] }
+  showGroupDialog.value = true
+}
+
+function openMemberDialog(g: any) {
+  editingGroupForMembers.value = g
+  memberForm.value.symbols = (g.members || []).map((m: any) => m.symbol)
+  showMemberDialog.value = true
+}
+
+async function submitGroup() {
+  if (!groupForm.value.groupName.trim()) { message.warning('请输入分组名称'); return }
+  groupSubmitting.value = true
+  try {
+    if (editingGroup.value) {
+      await holdingGroupApi.update(editingGroup.value.id, {
+        groupName: groupForm.value.groupName,
+        note: groupForm.value.note
+      })
+      message.success('分组已更新')
+    } else {
+      await holdingGroupApi.create({
+        groupName: groupForm.value.groupName,
+        note: groupForm.value.note,
+        symbols: groupForm.value.symbols.length ? groupForm.value.symbols : undefined
+      })
+      message.success('分组已创建')
+    }
+    showGroupDialog.value = false
+    await loadGroups()
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
+  } finally {
+    groupSubmitting.value = false
+  }
+}
+
+async function submitMembers() {
+  if (!editingGroupForMembers.value) return
+  memberSubmitting.value = true
+  try {
+    await holdingGroupApi.updateMembers(editingGroupForMembers.value.id, memberForm.value.symbols)
+    message.success('成员已更新')
+    showMemberDialog.value = false
+    await loadGroups()
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
+  } finally {
+    memberSubmitting.value = false
+  }
+}
+
+async function deleteGroup(id: number) {
+  try {
+    await holdingGroupApi.delete(id)
+    message.success('分组已删除')
+    await loadGroups()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
+}
+
 onMounted(async () => {
   await loadAccounts()
   loadHoldings()
   loadCashBalances()
+  loadGroups()
 })
 </script>
 
@@ -724,4 +913,9 @@ onMounted(async () => {
 .cash-cny { font-size: 12px; color: var(--hw-text-secondary); margin-top: 4px; }
 .cash-note { font-size: 11px; color: var(--hw-text-muted); margin-top: 2px; }
 .cash-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+/* 持仓分组 */
+.group-section { margin-bottom: 8px; }
+.group-title { font-weight: 600; font-size: 14px; }
+.group-members { display: flex; flex-wrap: wrap; margin-top: 6px; }
 </style>

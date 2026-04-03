@@ -28,6 +28,17 @@ export const holdingsApi = {
     request.post('/holdings/batch', holdings)
 }
 
+export const holdingGroupApi = {
+  list: () => request.get('/holding-groups'),
+  create: (data: { groupName: string; note?: string; symbols?: string[] }) =>
+    request.post('/holding-groups', data),
+  update: (id: number, data: { groupName: string; note?: string }) =>
+    request.put(`/holding-groups/${id}`, data),
+  updateMembers: (id: number, symbols: string[]) =>
+    request.put(`/holding-groups/${id}/members`, { symbols }),
+  delete: (id: number) => request.delete(`/holding-groups/${id}`)
+}
+
 export const cashBalanceApi = {
   list: (accountId: number) =>
     request.get(`/accounts/${accountId}/cash-balances`),

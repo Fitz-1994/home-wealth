@@ -21,5 +21,8 @@ public class HoldingRankVO {
         private BigDecimal marketValueCny;
         private BigDecimal ratio;           // 占总投资比例（0~1）
         private BigDecimal priceChangePct;
+        private Long groupId;               // 分组ID（null表示独立持仓）
+        private String groupName;           // 分组名称
+        private Integer memberCount;        // 分组成员数
     }
 }

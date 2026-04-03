@@ -28,6 +28,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final DailyNetAssetSnapshotMapper netSnapshotMapper;
     private final DailyInvestmentSnapshotMapper invSnapshotMapper;
     private final InvestmentCashBalanceMapper cashBalanceMapper;
+    private final HoldingGroupMapper holdingGroupMapper;
     private final ExchangeRateService exchangeRateService;
     private final MarketDataService marketDataService;
 
@@ -243,40 +244,87 @@ public class DashboardServiceImpl implements DashboardService {
         List<String> symbols = holdings.stream().map(InvestmentHolding::getSymbol).distinct().toList();
         Map<String, MarketPriceCache> priceMap = marketDataService.getLatestPrices(symbols);
 
-        // 按 symbol 聚合同一标的在不同账户中的持仓
-        Map<String, HoldingRankVO.HoldingRankItem> aggregated = new LinkedHashMap<>();
+        // 加载分组信息：symbol -> groupId，groupId -> groupName
+        Map<String, Long> symbolGroupMap = new HashMap<>();
+        Map<Long, String> groupNameMap = new HashMap<>();
+        for (HoldingGroup g : holdingGroupMapper.findByUserId(userId)) {
+            groupNameMap.put(g.getId(), g.getGroupName());
+        }
+        for (Map<String, Object> row : holdingGroupMapper.findAllMembersByUserId(userId)) {
+            String sym = (String) row.get("symbol");
+            Long gid = ((Number) row.get("groupId")).longValue();
+            symbolGroupMap.put(sym, gid);
+        }
+
+        // 分别聚合：属于某分组的 symbol 按 groupId 聚合，其余按 symbol 聚合
+        Map<String, HoldingRankVO.HoldingRankItem> ungrouped = new LinkedHashMap<>();
+        Map<Long, HoldingRankVO.HoldingRankItem> grouped = new LinkedHashMap<>();
+        Map<Long, BigDecimal> groupWeightedChange = new HashMap<>();
+        Map<Long, Set<String>> groupSymbols = new HashMap<>();  // 统计分组内不同标的数
         BigDecimal totalCny = BigDecimal.ZERO;
 
         for (InvestmentHolding holding : holdings) {
             MarketPriceCache price = priceMap.get(holding.getSymbol());
             if (price == null) continue;
 
-            BigDecimal mv = holding.getQuantity()
-                    .multiply(price.getPrice());
+            BigDecimal mv = holding.getQuantity().multiply(price.getPrice());
             BigDecimal mvCny = exchangeRateService.toCny(mv, price.getCurrency());
             totalCny = totalCny.add(mvCny);
 
-            HoldingRankVO.HoldingRankItem existing = aggregated.get(holding.getSymbol());
-            if (existing != null) {
-                existing.setQuantity(existing.getQuantity().add(holding.getQuantity()));
-                existing.setMarketValueCny(existing.getMarketValueCny().add(mvCny));
+            Long gid = symbolGroupMap.get(holding.getSymbol());
+            if (gid != null && groupNameMap.containsKey(gid)) {
+                // 按分组聚合
+                HoldingRankVO.HoldingRankItem gItem = grouped.get(gid);
+                if (gItem == null) {
+                    gItem = new HoldingRankVO.HoldingRankItem();
+                    gItem.setGroupId(gid);
+                    gItem.setGroupName(groupNameMap.get(gid));
+                    gItem.setMarketValueCny(BigDecimal.ZERO);
+                    grouped.put(gid, gItem);
+                    groupWeightedChange.put(gid, BigDecimal.ZERO);
+                    groupSymbols.put(gid, new HashSet<>());
+                }
+                gItem.setMarketValueCny(gItem.getMarketValueCny().add(mvCny));
+                groupSymbols.get(gid).add(holding.getSymbol());
+                BigDecimal changePct = price.getChangePct() != null ? price.getChangePct() : BigDecimal.ZERO;
+                groupWeightedChange.put(gid, groupWeightedChange.get(gid).add(mvCny.multiply(changePct)));
             } else {
-                HoldingRankVO.HoldingRankItem item = new HoldingRankVO.HoldingRankItem();
-                item.setHoldingId(holding.getId());
-                item.setSymbol(holding.getSymbol());
-                item.setSymbolName(price.getSymbolName() != null && !price.getSymbolName().isEmpty()
-                        ? price.getSymbolName() : holding.getSymbolName());
-                item.setMarket(holding.getMarket());
-                item.setQuantity(holding.getQuantity());
-                item.setCurrentPrice(price.getPrice());
-                item.setPriceCurrency(price.getCurrency());
-                item.setMarketValueCny(mvCny);
-                item.setPriceChangePct(price.getChangePct());
-                aggregated.put(holding.getSymbol(), item);
+                // 按 symbol 聚合（与原逻辑一致）
+                HoldingRankVO.HoldingRankItem existing = ungrouped.get(holding.getSymbol());
+                if (existing != null) {
+                    existing.setQuantity(existing.getQuantity().add(holding.getQuantity()));
+                    existing.setMarketValueCny(existing.getMarketValueCny().add(mvCny));
+                } else {
+                    HoldingRankVO.HoldingRankItem item = new HoldingRankVO.HoldingRankItem();
+                    item.setHoldingId(holding.getId());
+                    item.setSymbol(holding.getSymbol());
+                    item.setSymbolName(price.getSymbolName() != null && !price.getSymbolName().isEmpty()
+                            ? price.getSymbolName() : holding.getSymbolName());
+                    item.setMarket(holding.getMarket());
+                    item.setQuantity(holding.getQuantity());
+                    item.setCurrentPrice(price.getPrice());
+                    item.setPriceCurrency(price.getCurrency());
+                    item.setMarketValueCny(mvCny);
+                    item.setPriceChangePct(price.getChangePct());
+                    ungrouped.put(holding.getSymbol(), item);
+                }
             }
         }
 
-        List<HoldingRankVO.HoldingRankItem> items = new ArrayList<>(aggregated.values());
+        // 计算分组加权平均涨跌幅 + memberCount（不同标的数）
+        for (Map.Entry<Long, HoldingRankVO.HoldingRankItem> entry : grouped.entrySet()) {
+            HoldingRankVO.HoldingRankItem gItem = entry.getValue();
+            gItem.setMemberCount(groupSymbols.get(entry.getKey()).size());
+            if (gItem.getMarketValueCny().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal weightedSum = groupWeightedChange.get(entry.getKey());
+                gItem.setPriceChangePct(weightedSum.divide(gItem.getMarketValueCny(), 4, RoundingMode.HALF_UP));
+            }
+        }
+
+        // 合并
+        List<HoldingRankVO.HoldingRankItem> items = new ArrayList<>();
+        items.addAll(ungrouped.values());
+        items.addAll(grouped.values());
 
         // 按市值降序
         items.sort(Comparator.comparing(HoldingRankVO.HoldingRankItem::getMarketValueCny).reversed());

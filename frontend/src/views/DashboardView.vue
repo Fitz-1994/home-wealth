@@ -92,31 +92,43 @@
 
     <!-- 持仓排行 -->
     <n-card title="持仓排行榜" class="chart-card">
+      <template #header-extra>
+        <n-button-group size="small">
+          <n-button :type="rankView === 'list' ? 'primary' : 'default'" @click="rankView = 'list'">列表</n-button>
+          <n-button :type="rankView === 'treemap' ? 'primary' : 'default'" @click="rankView = 'treemap'">树图</n-button>
+        </n-button-group>
+      </template>
       <n-spin :show="loading.rank">
         <n-empty v-if="!holdingRank.items?.length" description="暂无持仓数据" />
-        <div v-else class="holding-rank">
-          <div v-for="(item, idx) in holdingRank.items" :key="item.holdingId" class="rank-item">
-            <div class="rank-no">{{ idx + 1 }}</div>
-            <div class="rank-info">
-              <div class="rank-name">{{ item.symbolName || item.symbol }}</div>
-              <div class="rank-market">{{ marketLabel(item.market) }} · {{ item.symbol }}</div>
-            </div>
-            <div class="rank-value">
-              <div>{{ formatCny(item.marketValueCny) }}</div>
-              <n-progress
-                type="line"
-                :percentage="(item.ratio || 0) * 100"
-                :show-indicator="false"
-                :height="4"
-                style="width:80px"
-              />
-              <div class="rank-ratio">{{ ((item.ratio || 0) * 100).toFixed(1) }}%</div>
-            </div>
-            <div class="rank-change" :class="item.priceChangePct >= 0 ? 'up' : 'down'">
-              {{ formatPct(item.priceChangePct) }}
+        <template v-else>
+          <TreemapChart v-if="rankView === 'treemap'" :items="holdingRank.items" />
+          <div v-else class="holding-rank">
+            <div v-for="(item, idx) in holdingRank.items" :key="item.groupId ? `g${item.groupId}` : item.holdingId" class="rank-item">
+              <div class="rank-no">{{ idx + 1 }}</div>
+              <div class="rank-info">
+                <div class="rank-name">{{ item.groupName || item.symbolName || item.symbol }}</div>
+                <div class="rank-market">
+                  <template v-if="item.groupName">组合 · {{ item.memberCount }}个持仓</template>
+                  <template v-else>{{ marketLabel(item.market) }} · {{ item.symbol }}</template>
+                </div>
+              </div>
+              <div class="rank-value">
+                <div>{{ formatCny(item.marketValueCny) }}</div>
+                <n-progress
+                  type="line"
+                  :percentage="(item.ratio || 0) * 100"
+                  :show-indicator="false"
+                  :height="4"
+                  style="width:80px"
+                />
+                <div class="rank-ratio">{{ ((item.ratio || 0) * 100).toFixed(1) }}%</div>
+              </div>
+              <div class="rank-change" :class="item.priceChangePct >= 0 ? 'up' : 'down'">
+                {{ formatPct(item.priceChangePct) }}
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </n-spin>
     </n-card>
   </div>
@@ -129,6 +141,7 @@ import { dashboardApi } from '@/api/dashboard'
 import { formatCny, formatPct, ASSET_CATEGORY_LABELS, MARKET_TYPE_LABELS } from '@/utils/currency'
 import SankeyChart from '@/components/charts/SankeyChart.vue'
 import LineChart from '@/components/charts/LineChart.vue'
+import TreemapChart from '@/components/charts/TreemapChart.vue'
 
 const message = useMessage()
 
@@ -137,6 +150,7 @@ const sankeyData = ref<any>(null)
 const netAssetChart = ref({ dates: [] as string[], values: [] as number[] })
 const investmentChart = ref({ dates: [] as string[], values: [] as number[] })
 const holdingRank = ref<any>({ items: [] })
+const rankView = ref<'list' | 'treemap'>('list')
 const netAssetDays = ref(90)
 const investmentDays = ref(90)
 const refreshing = ref(false)

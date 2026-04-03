@@ -225,6 +225,37 @@ CREATE TABLE IF NOT EXISTS `investment_cash_balance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资账户现金余额表';
 
 -- ============================================
+-- 11. 持仓分组表
+-- ============================================
+-- 用户可将多个跟踪同一指数的持仓归入同一分组，排行榜按组聚合
+CREATE TABLE IF NOT EXISTS `holding_group` (
+  `id`         BIGINT       NOT NULL AUTO_INCREMENT,
+  `user_id`    BIGINT       NOT NULL COMMENT '所属用户',
+  `group_name` VARCHAR(200) NOT NULL COMMENT '分组名称',
+  `note`       VARCHAR(500)          COMMENT '备注',
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  CONSTRAINT `fk_group_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='持仓分组表';
+
+-- ============================================
+-- 12. 持仓分组成员表（按标的维度）
+-- ============================================
+-- 同一用户的同一 symbol 不能属于多个分组（由应用层按 userId 校验）
+CREATE TABLE IF NOT EXISTS `holding_group_member` (
+  `id`         BIGINT      NOT NULL AUTO_INCREMENT,
+  `group_id`   BIGINT      NOT NULL COMMENT '所属分组',
+  `symbol`     VARCHAR(50) NOT NULL COMMENT '标的代码',
+  `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_group_id` (`group_id`),
+  KEY `idx_symbol` (`symbol`),
+  CONSTRAINT `fk_member_group` FOREIGN KEY (`group_id`) REFERENCES `holding_group` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='持仓分组成员表';
+
+-- ============================================
 -- 初始化种子汇率数据（定时任务启动后会自动更新）
 -- ============================================
 INSERT IGNORE INTO `exchange_rate` (`from_currency`, `to_currency`, `rate`, `rate_date`, `source`) VALUES

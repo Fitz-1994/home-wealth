@@ -31,6 +31,10 @@ public enum ErrorCode {
     // 行情
     MARKET_DATA_FETCH_FAILED(4001, "行情数据获取失败"),
 
+    // 持仓分组
+    GROUP_NOT_FOUND(6001, "分组不存在"),
+    HOLDING_ALREADY_IN_OTHER_GROUP(6002, "部分持仓已属于其他分组"),
+
     // API Key
     API_KEY_NOT_FOUND(5001, "API Key不存在"),
     API_KEY_INVALID(5002, "API Key无效或已过期");

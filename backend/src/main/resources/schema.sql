@@ -256,6 +256,50 @@ CREATE TABLE IF NOT EXISTS `holding_group_member` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='持仓分组成员表';
 
 -- ============================================
+-- 13. 分红事件表（全局，非用户维度）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `dividend_event` (
+  `id`                  BIGINT         NOT NULL AUTO_INCREMENT,
+  `symbol`              VARCHAR(50)    NOT NULL COMMENT '标的代码（Yahoo Finance 格式或基金代码）',
+  `market`              VARCHAR(20)    NOT NULL COMMENT '市场：CN_A/HK/US/CN_FUND',
+  `ex_dividend_date`    DATE           NOT NULL COMMENT '除权除息日',
+  `payment_date`        DATE                    COMMENT '派息日（可空）',
+  `dividend_per_share`  DECIMAL(20, 8) NOT NULL COMMENT '每股/每份分红（原币）',
+  `currency`            VARCHAR(10)    NOT NULL COMMENT '币种',
+  `source`              VARCHAR(20)    NOT NULL DEFAULT 'YAHOO' COMMENT '数据来源：YAHOO/EASTMONEY',
+  `created_at`          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_symbol_exdate` (`symbol`, `ex_dividend_date`),
+  KEY `idx_ex_date` (`ex_dividend_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分红事件表';
+
+-- ============================================
+-- 14. 用户分红收入记录表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `dividend_income_record` (
+  `id`                  BIGINT         NOT NULL AUTO_INCREMENT,
+  `user_id`             BIGINT         NOT NULL COMMENT '用户ID',
+  `account_id`          BIGINT         NOT NULL COMMENT '投资账户ID',
+  `symbol`              VARCHAR(50)    NOT NULL COMMENT '标的代码',
+  `symbol_name`         VARCHAR(200)            COMMENT '标的名称',
+  `market`              VARCHAR(20)    NOT NULL COMMENT '市场',
+  `ex_dividend_date`    DATE           NOT NULL COMMENT '除权除息日',
+  `quantity`            DECIMAL(20, 6) NOT NULL COMMENT '持有数量',
+  `dividend_per_share`  DECIMAL(20, 8) NOT NULL COMMENT '每股分红',
+  `dividend_amount`     DECIMAL(20, 4) NOT NULL COMMENT '原币分红金额',
+  `currency`            VARCHAR(10)    NOT NULL COMMENT '币种',
+  `cny_rate`            DECIMAL(15, 6) NOT NULL DEFAULT 1.000000 COMMENT '对CNY汇率',
+  `dividend_amount_cny` DECIMAL(20, 4) NOT NULL COMMENT '折算人民币分红金额',
+  `created_at`          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_acct_sym_date` (`user_id`, `account_id`, `symbol`, `ex_dividend_date`),
+  KEY `idx_user_exdate` (`user_id`, `ex_dividend_date`),
+  CONSTRAINT `fk_div_record_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户分红收入记录表';
+
+-- ============================================
 -- 初始化种子汇率数据（定时任务启动后会自动更新）
 -- ============================================
 INSERT IGNORE INTO `exchange_rate` (`from_currency`, `to_currency`, `rate`, `rate_date`, `source`) VALUES

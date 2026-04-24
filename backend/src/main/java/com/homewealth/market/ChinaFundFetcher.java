@@ -37,6 +37,7 @@ public class ChinaFundFetcher {
 
     private static final String FUNDGZ_URL = "http://fundgz.1234567.com.cn/js/%s.js";
     private static final String LSJZ_URL = "https://api.fund.eastmoney.com/f10/lsjz?fundCode=%s&pageIndex=1&pageSize=2";
+    private static final String FHSP_URL = "https://api.fund.eastmoney.com/f10/fhsp?fundCode=%s&pageIndex=1&pageSize=100";
     private static final Pattern JSONP_PATTERN = Pattern.compile("jsonpgz\\((.+?)\\);?");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -194,6 +195,85 @@ public class ChinaFundFetcher {
                 .source("EASTMONEY")
                 .build());
     }
+
+    // ---- 基金分红数据 ----
+
+    /**
+     * 批量获取基金分红历史（并发请求）
+     */
+    public Map<String, List<DividendInfo>> fetchDividends(List<String> fundCodes) {
+        if (fundCodes == null || fundCodes.isEmpty()) return Collections.emptyMap();
+
+        List<CompletableFuture<Map.Entry<String, List<DividendInfo>>>> futures = fundCodes.stream()
+                .map(code -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        List<DividendInfo> dividends = fetchOneDividend(code);
+                        return Map.entry(code, dividends);
+                    } catch (Exception e) {
+                        log.error("Failed to fetch fund dividends for {}: {}", code, e.getMessage());
+                        return Map.entry(code, Collections.<DividendInfo>emptyList());
+                    }
+                }))
+                .collect(Collectors.toList());
+
+        Map<String, List<DividendInfo>> result = new HashMap<>();
+        for (CompletableFuture<Map.Entry<String, List<DividendInfo>>> future : futures) {
+            Map.Entry<String, List<DividendInfo>> entry = future.join();
+            if (!entry.getValue().isEmpty()) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private List<DividendInfo> fetchOneDividend(String fundCode) throws Exception {
+        String url = String.format(FHSP_URL, fundCode);
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                .header("Referer", "https://fund.eastmoney.com/")
+                .timeout(Duration.ofSeconds(8))
+                .GET().build();
+
+        HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            log.warn("East Money fhsp API HTTP {} for fund {}", response.statusCode(), fundCode);
+            return Collections.emptyList();
+        }
+
+        JsonNode root = objectMapper.readTree(response.body());
+        JsonNode list = root.path("Data").path("FHSPDetail");
+        if (!list.isArray() || list.isEmpty()) return Collections.emptyList();
+
+        List<DividendInfo> dividends = new ArrayList<>();
+        for (JsonNode item : list) {
+            String fhspStr = item.path("FHFCZ").asText("");
+            String dateStr = item.path("DJRQ").asText("");
+
+            if (fhspStr.isEmpty() || dateStr.isEmpty()) continue;
+
+            try {
+                BigDecimal dividendPerShare = new BigDecimal(fhspStr);
+                if (dividendPerShare.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                LocalDate exDate = LocalDate.parse(dateStr, DATE_FMT);
+
+                dividends.add(DividendInfo.builder()
+                        .symbol(fundCode)
+                        .exDividendDate(exDate)
+                        .dividendPerShare(dividendPerShare)
+                        .currency("CNY")
+                        .build());
+            } catch (Exception e) {
+                log.debug("Skipping unparseable fund dividend for {}: {}", fundCode, e.getMessage());
+            }
+        }
+
+        return dividends;
+    }
+
+    // ---- 辅助方法 ----
 
     /**
      * 通过基金搜索 API 获取基金名称

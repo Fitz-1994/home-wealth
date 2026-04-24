@@ -90,6 +90,64 @@
       </n-card>
     </div>
 
+    <!-- 分红统计 -->
+    <n-card title="分红收入" class="chart-card">
+      <template #header-extra>
+        <n-space :size="8">
+          <n-button size="small" :loading="loading.dividendBackfill" @click="backfillDividends">回填3月</n-button>
+          <n-button size="small" :loading="loading.dividendFetch" @click="fetchDividends">抓取分红</n-button>
+        </n-space>
+      </template>
+      <div v-if="dividendSummary" class="overview-cards" style="margin-bottom:16px">
+        <n-card class="overview-card">
+          <div class="card-label">近12月分红</div>
+          <div class="card-value dividend-value">{{ formatCny(dividendSummary.last12MonthsTotal) }}</div>
+        </n-card>
+        <n-card class="overview-card">
+          <div class="card-label">本年分红</div>
+          <div class="card-value dividend-value">{{ formatCny(dividendSummary.currentYearTotal) }}</div>
+        </n-card>
+        <n-card class="overview-card">
+          <div class="card-label">本月分红</div>
+          <div class="card-value dividend-value">{{ formatCny(dividendSummary.currentMonthTotal) }}</div>
+        </n-card>
+      </div>
+      <n-spin :show="loading.dividend">
+        <div class="dividend-chart-header">
+          <span>月度分红</span>
+          <n-select
+            v-model:value="dividendMonths"
+            :options="dividendMonthOptions"
+            size="small"
+            style="width:100px"
+            @update:value="loadDividendHistory"
+          />
+        </div>
+        <div v-if="dividendChart.months.length" ref="dividendChartRef" class="chart-container" />
+        <n-empty v-else description="暂无分红数据" />
+      </n-spin>
+
+      <!-- 分红明细 -->
+      <div v-if="dividendDetail.length" class="dividend-detail">
+        <div class="dividend-detail-header">
+          <span>{{ selectedDividendMonth }} 分红明细</span>
+          <n-button size="tiny" quaternary @click="dividendDetail = []; selectedDividendMonth = ''">关闭</n-button>
+        </div>
+        <div class="dividend-detail-list">
+          <div v-for="item in dividendDetail" :key="item.symbol" class="dividend-detail-item">
+            <div class="detail-info">
+              <div class="detail-name">{{ item.symbolName || item.symbol }}</div>
+              <div class="detail-meta">{{ marketLabel(item.market) }} · {{ item.symbol }} · {{ item.eventCount }}次</div>
+            </div>
+            <div class="detail-amount">
+              <div class="detail-cny">{{ formatCny(item.totalDividendCny) }}</div>
+              <div v-if="item.currency !== 'CNY'" class="detail-original">{{ item.currency }} {{ item.totalDividendOriginal }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </n-card>
+
     <!-- 持仓排行 -->
     <n-card title="持仓排行榜" class="chart-card">
       <template #header-extra>
@@ -135,9 +193,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useMessage } from 'naive-ui'
+import * as echarts from 'echarts'
 import { dashboardApi } from '@/api/dashboard'
+import { dividendApi } from '@/api/dividend'
 import { formatCny, formatPct, ASSET_CATEGORY_LABELS, MARKET_TYPE_LABELS } from '@/utils/currency'
 import SankeyChart from '@/components/charts/SankeyChart.vue'
 import LineChart from '@/components/charts/LineChart.vue'
@@ -155,8 +215,17 @@ const netAssetDays = ref(90)
 const investmentDays = ref(90)
 const refreshing = ref(false)
 
+const dividendSummary = ref<any>(null)
+const dividendChart = ref({ months: [] as string[], totals: [] as number[] })
+const dividendMonths = ref(12)
+const dividendChartRef = ref<HTMLElement>()
+const dividendDetail = ref<any[]>([])
+const selectedDividendMonth = ref('')
+let dividendEchart: echarts.ECharts | null = null
+
 const loading = ref({
-  overview: false, sankey: false, netAsset: false, investment: false, rank: false
+  overview: false, sankey: false, netAsset: false, investment: false, rank: false,
+  dividend: false, dividendFetch: false, dividendBackfill: false
 })
 
 const dayOptions = [
@@ -164,6 +233,12 @@ const dayOptions = [
   { label: '近180天', value: 180 },
   { label: '近365天', value: 365 },
   { label: '全部', value: 0 }
+]
+
+const dividendMonthOptions = [
+  { label: '近12月', value: 12 },
+  { label: '近24月', value: 24 },
+  { label: '全部', value: 120 }
 ]
 
 const categoryLabel = (key: string) => ASSET_CATEGORY_LABELS[key] || key
@@ -213,6 +288,112 @@ async function refreshMarket() {
   }
 }
 
+async function loadDividendSummary() {
+  try { dividendSummary.value = await dividendApi.summary() } catch {}
+}
+
+async function loadDividendHistory() {
+  loading.value.dividend = true
+  try {
+    const data: any = await dividendApi.history(dividendMonths.value)
+    dividendChart.value = data
+    await nextTick()
+    renderDividendChart()
+  } finally { loading.value.dividend = false }
+}
+
+async function loadDividendDetail(month: string) {
+  const [yearStr, monthStr] = month.split('-')
+  const year = parseInt(yearStr)
+  const mon = parseInt(monthStr)
+  try {
+    dividendDetail.value = await dividendApi.detail(year, mon) as any
+    selectedDividendMonth.value = month
+  } catch (e: any) {
+    message.error(e.message || '加载分红明细失败')
+  }
+}
+
+function renderDividendChart() {
+  if (!dividendChartRef.value) return
+  if (!dividendEchart) {
+    dividendEchart = echarts.init(dividendChartRef.value)
+    dividendResizeObserver.observe(dividendChartRef.value)
+    dividendEchart.on('click', (params: any) => {
+      if (params.componentType === 'series') {
+        loadDividendDetail(params.name)
+      }
+    })
+  }
+  dividendEchart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) => {
+        const p = params[0]
+        const val = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(p.value)
+        return `${p.axisValue}<br/>${p.marker}分红收入：${val}`
+      }
+    },
+    grid: { left: 16, right: 16, top: 16, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: dividendChart.value.months,
+      axisLabel: { fontSize: 11 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 11,
+        formatter: (v: number) => {
+          if (v >= 1e4) return `${(v / 1e4).toFixed(0)}万`
+          return v.toString()
+        }
+      }
+    },
+    series: [{
+      type: 'bar',
+      data: dividendChart.value.totals,
+      barMaxWidth: 40,
+      cursor: 'pointer',
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#f0a020' },
+          { offset: 1, color: '#f0a02060' }
+        ]),
+        borderRadius: [4, 4, 0, 0]
+      }
+    }]
+  })
+}
+
+const dividendResizeObserver = new ResizeObserver(() => dividendEchart?.resize())
+
+async function backfillDividends() {
+  loading.value.dividendBackfill = true
+  try {
+    await dividendApi.backfill(3)
+    message.success('分红数据回填成功')
+    await Promise.all([loadDividendSummary(), loadDividendHistory()])
+  } catch (e: any) {
+    message.error(e.message || '分红回填失败')
+  } finally {
+    loading.value.dividendBackfill = false
+  }
+}
+
+async function fetchDividends() {
+  loading.value.dividendFetch = true
+  try {
+    await dividendApi.fetch()
+    message.success('分红数据抓取成功')
+    await Promise.all([loadDividendSummary(), loadDividendHistory()])
+  } catch (e: any) {
+    message.error(e.message || '分红抓取失败')
+  } finally {
+    loading.value.dividendFetch = false
+  }
+}
+
 async function triggerSnapshot() {
   try {
     await dashboardApi.triggerSnapshot()
@@ -226,8 +407,14 @@ async function triggerSnapshot() {
 onMounted(() => {
   Promise.all([
     loadOverview(), loadSankey(),
-    loadNetAssetHistory(), loadInvestmentHistory(), loadHoldingRank()
+    loadNetAssetHistory(), loadInvestmentHistory(), loadHoldingRank(),
+    loadDividendSummary(), loadDividendHistory()
   ])
+})
+
+onUnmounted(() => {
+  dividendResizeObserver.disconnect()
+  dividendEchart?.dispose()
 })
 </script>
 
@@ -258,4 +445,19 @@ onMounted(() => {
 .rank-change { width: 64px; text-align: right; font-weight: 500; }
 .rank-change.up { color: #d03050; }
 .rank-change.down { color: #18a058; }
+
+.dividend-value { color: #f0a020; }
+.dividend-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 500; }
+.chart-container { width: 100%; height: 300px; }
+
+.dividend-detail { margin-top: 16px; border-top: 1px solid var(--hw-border); padding-top: 12px; }
+.dividend-detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 500; }
+.dividend-detail-list { display: flex; flex-direction: column; gap: 8px; }
+.dividend-detail-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--hw-bg-secondary); }
+.detail-info { flex: 1; min-width: 0; }
+.detail-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-meta { font-size: 12px; color: var(--hw-text-secondary); margin-top: 2px; }
+.detail-amount { text-align: right; }
+.detail-cny { font-weight: 600; color: #f0a020; }
+.detail-original { font-size: 12px; color: var(--hw-text-secondary); margin-top: 2px; }
 </style>

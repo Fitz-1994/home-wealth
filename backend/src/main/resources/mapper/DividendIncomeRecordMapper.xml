@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.DividendIncomeRecordMapper">
+
+    <resultMap id="DividendIncomeRecordMap" type="com.homewealth.model.DividendIncomeRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="symbol" column="symbol"/>
+        <result property="symbolName" column="symbol_name"/>
+        <result property="market" column="market"/>
+        <result property="exDividendDate" column="ex_dividend_date"/>
+        <result property="quantity" column="quantity"/>
+        <result property="dividendPerShare" column="dividend_per_share"/>
+        <result property="dividendAmount" column="dividend_amount"/>
+        <result property="currency" column="currency"/>
+        <result property="cnyRate" column="cny_rate"/>
+        <result property="dividendAmountCny" column="dividend_amount_cny"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="upsert">
+        INSERT INTO dividend_income_record
+            (user_id, account_id, symbol, symbol_name, market, ex_dividend_date,
+             quantity, dividend_per_share, dividend_amount, currency, cny_rate, dividend_amount_cny)
+        VALUES
+            (#{userId}, #{accountId}, #{symbol}, #{symbolName}, #{market}, #{exDividendDate},
+             #{quantity}, #{dividendPerShare}, #{dividendAmount}, #{currency}, #{cnyRate}, #{dividendAmountCny})
+        ON DUPLICATE KEY UPDATE
+            symbol_name        = VALUES(symbol_name),
+            quantity           = VALUES(quantity),
+            dividend_per_share = VALUES(dividend_per_share),
+            dividend_amount    = VALUES(dividend_amount),
+            currency           = VALUES(currency),
+            cny_rate           = VALUES(cny_rate),
+            dividend_amount_cny = VALUES(dividend_amount_cny)
+    </insert>
+
+    <insert id="batchUpsert">
+        INSERT INTO dividend_income_record
+            (user_id, account_id, symbol, symbol_name, market, ex_dividend_date,
+             quantity, dividend_per_share, dividend_amount, currency, cny_rate, dividend_amount_cny)
+        VALUES
+        <foreach collection="records" item="r" separator=",">
+            (#{r.userId}, #{r.accountId}, #{r.symbol}, #{r.symbolName}, #{r.market}, #{r.exDividendDate},
+             #{r.quantity}, #{r.dividendPerShare}, #{r.dividendAmount}, #{r.currency}, #{r.cnyRate}, #{r.dividendAmountCny})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            symbol_name        = VALUES(symbol_name),
+            quantity           = VALUES(quantity),
+            dividend_per_share = VALUES(dividend_per_share),
+            dividend_amount    = VALUES(dividend_amount),
+            currency           = VALUES(currency),
+            cny_rate           = VALUES(cny_rate),
+            dividend_amount_cny = VALUES(dividend_amount_cny)
+    </insert>
+
+    <select id="findTotal" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(dividend_amount_cny), 0)
+        FROM dividend_income_record
+        WHERE user_id = #{userId}
+          AND ex_dividend_date BETWEEN #{startDate} AND #{endDate}
+    </select>
+
+    <select id="findMonthlyAggregation" resultType="java.util.Map">
+        SELECT DATE_FORMAT(ex_dividend_date, '%Y-%m') AS month,
+               SUM(dividend_amount_cny) AS total
+        FROM dividend_income_record
+        WHERE user_id = #{userId}
+          AND ex_dividend_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY DATE_FORMAT(ex_dividend_date, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="findYearlyAggregation" resultType="java.util.Map">
+        SELECT DATE_FORMAT(ex_dividend_date, '%Y') AS year,
+               SUM(dividend_amount_cny) AS total
+        FROM dividend_income_record
+        WHERE user_id = #{userId}
+          AND ex_dividend_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY DATE_FORMAT(ex_dividend_date, '%Y')
+        ORDER BY year ASC
+    </select>
+
+    <select id="findDetailByPeriod" resultType="java.util.Map">
+        SELECT symbol,
+               MAX(symbol_name) AS symbolName,
+               MAX(market) AS market,
+               SUM(dividend_amount_cny) AS totalDividendCny,
+               SUM(dividend_amount) AS totalDividendOriginal,
+               MAX(currency) AS currency,
+               COUNT(*) AS eventCount
+        FROM dividend_income_record
+        WHERE user_id = #{userId}
+          AND ex_dividend_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY symbol
+        ORDER BY totalDividendCny DESC
+    </select>
+
+</mapper>

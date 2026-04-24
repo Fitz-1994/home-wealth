@@ -15,7 +15,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -45,6 +47,7 @@ public class YahooFinanceFetcher {
 
     private static final String BASE_URL = "https://query2.finance.yahoo.com";
     private static final String CHART_PATH = "/v8/finance/chart/%s?interval=1d&range=1d";
+    private static final String DIVIDEND_PATH = "/v8/finance/chart/%s?interval=1d&range=1y&events=dividends";
 
     private HttpClient httpClient;
 
@@ -87,6 +90,100 @@ public class YahooFinanceFetcher {
             log.error("Failed to fetch quote for {}: {}", symbol, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    // ---- 分红数据接口 ----
+
+    public Map<String, List<DividendInfo>> fetchDividends(List<String> symbols) {
+        if (symbols == null || symbols.isEmpty()) return Collections.emptyMap();
+
+        List<CompletableFuture<Map.Entry<String, List<DividendInfo>>>> futures = symbols.stream()
+                .map(sym -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        List<DividendInfo> dividends = fetchOneDividend(sym);
+                        return Map.entry(sym, dividends);
+                    } catch (Exception e) {
+                        log.error("Failed to fetch dividends for {}: {}", sym, e.getMessage());
+                        return Map.entry(sym, Collections.<DividendInfo>emptyList());
+                    }
+                }))
+                .collect(Collectors.toList());
+
+        Map<String, List<DividendInfo>> result = new HashMap<>();
+        for (CompletableFuture<Map.Entry<String, List<DividendInfo>>> future : futures) {
+            Map.Entry<String, List<DividendInfo>> entry = future.join();
+            if (!entry.getValue().isEmpty()) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private List<DividendInfo> fetchOneDividend(String symbol) throws Exception {
+        String url = BASE_URL + String.format(DIVIDEND_PATH, symbol);
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .timeout(Duration.ofSeconds(10))
+                .GET().build();
+
+        HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            log.warn("Yahoo Finance dividend API HTTP {} for symbol {}", response.statusCode(), symbol);
+            return Collections.emptyList();
+        }
+
+        return parseDividendResponse(symbol, response.body());
+    }
+
+    private List<DividendInfo> parseDividendResponse(String symbol, String json) throws Exception {
+        JsonNode root = objectMapper.readTree(json);
+        JsonNode chart = root.path("chart");
+
+        JsonNode errorNode = chart.path("error");
+        if (!errorNode.isNull()) {
+            log.warn("Yahoo Finance dividend error for {}: {}", symbol, errorNode);
+            return Collections.emptyList();
+        }
+
+        JsonNode results = chart.path("result");
+        if (!results.isArray() || results.isEmpty()) return Collections.emptyList();
+
+        JsonNode firstResult = results.get(0);
+        String currency = firstResult.path("meta").path("currency").asText("USD");
+
+        JsonNode events = firstResult.path("events").path("dividends");
+        if (events.isMissingNode() || events.isEmpty()) return Collections.emptyList();
+
+        List<DividendInfo> dividends = new ArrayList<>();
+        Iterator<Map.Entry<String, JsonNode>> fields = events.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            JsonNode divNode = entry.getValue();
+
+            double amount = divNode.path("amount").asDouble(0);
+            if (amount <= 0) continue;
+
+            long timestamp = divNode.path("date").asLong(0);
+            if (timestamp <= 0) continue;
+
+            LocalDate exDate = Instant.ofEpochSecond(timestamp)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate();
+
+            dividends.add(DividendInfo.builder()
+                    .symbol(symbol)
+                    .exDividendDate(exDate)
+                    .dividendPerShare(BigDecimal.valueOf(amount))
+                    .currency(currency)
+                    .build());
+        }
+
+        return dividends;
     }
 
     // ---- 内部实现 ----

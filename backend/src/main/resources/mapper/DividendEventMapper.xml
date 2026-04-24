@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.DividendEventMapper">
+
+    <resultMap id="DividendEventMap" type="com.homewealth.model.DividendEvent">
+        <id property="id" column="id"/>
+        <result property="symbol" column="symbol"/>
+        <result property="market" column="market"/>
+        <result property="exDividendDate" column="ex_dividend_date"/>
+        <result property="paymentDate" column="payment_date"/>
+        <result property="dividendPerShare" column="dividend_per_share"/>
+        <result property="currency" column="currency"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="upsert">
+        INSERT INTO dividend_event
+            (symbol, market, ex_dividend_date, payment_date, dividend_per_share, currency, source)
+        VALUES
+            (#{symbol}, #{market}, #{exDividendDate}, #{paymentDate}, #{dividendPerShare}, #{currency}, #{source})
+        ON DUPLICATE KEY UPDATE
+            market             = VALUES(market),
+            payment_date       = VALUES(payment_date),
+            dividend_per_share = VALUES(dividend_per_share),
+            currency           = VALUES(currency),
+            source             = VALUES(source)
+    </insert>
+
+    <insert id="batchUpsert">
+        INSERT INTO dividend_event
+            (symbol, market, ex_dividend_date, payment_date, dividend_per_share, currency, source)
+        VALUES
+        <foreach collection="events" item="e" separator=",">
+            (#{e.symbol}, #{e.market}, #{e.exDividendDate}, #{e.paymentDate}, #{e.dividendPerShare}, #{e.currency}, #{e.source})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            market             = VALUES(market),
+            payment_date       = VALUES(payment_date),
+            dividend_per_share = VALUES(dividend_per_share),
+            currency           = VALUES(currency),
+            source             = VALUES(source)
+    </insert>
+
+    <select id="findBySymbolsAndDate" resultMap="DividendEventMap">
+        SELECT * FROM dividend_event
+        WHERE ex_dividend_date = #{date}
+        AND symbol IN
+        <foreach collection="symbols" item="sym" open="(" separator="," close=")">
+            #{sym}
+        </foreach>
+    </select>
+
+    <select id="findBySymbolsAndDateRange" resultMap="DividendEventMap">
+        SELECT * FROM dividend_event
+        WHERE symbol IN
+        <foreach collection="symbols" item="sym" open="(" separator="," close=")">
+            #{sym}
+        </foreach>
+        AND ex_dividend_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY ex_dividend_date ASC
+    </select>
+
+</mapper>

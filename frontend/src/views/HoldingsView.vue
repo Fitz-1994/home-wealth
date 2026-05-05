@@ -175,7 +175,10 @@
               </div>
             </div>
             <div class="col-qty">{{ g.totalQuantity }}</div>
-            <div class="col-price">{{ g.priceCurrency }} {{ g.currentPrice }}</div>
+            <div class="col-price">
+              {{ g.priceCurrency }} {{ g.currentPrice }}
+              <n-tag v-if="g.priceSource === 'MANUAL'" size="tiny" type="warning" :bordered="false" style="margin-left:4px">手工</n-tag>
+            </div>
             <div class="col-value">{{ formatCny(g.totalMarketValueCny) }}</div>
             <div class="col-pnl" v-if="g.totalUnrealizedPnl != null" :class="g.totalUnrealizedPnl >= 0 ? 'up' : 'down'">
               {{ formatCny(g.totalUnrealizedPnl) }}
@@ -186,6 +189,7 @@
               {{ formatPct(g.priceChangePct) }}
             </div>
             <div class="col-actions">
+              <n-button text size="tiny" @click="openManualPriceDialog(g)">录价</n-button>
               <template v-if="g.items.length > 1">
                 <n-button text size="tiny" @click="toggleExpand(g.key)">
                   {{ expandedKeys.has(g.key) ? '收起' : '明细' }}({{ g.items.length }})
@@ -338,6 +342,31 @@
         <n-button type="primary" :loading="submitting" @click="submitHolding">保存</n-button>
       </template>
     </n-modal>
+
+    <!-- 手工录入价格对话框 -->
+    <n-modal v-model:show="showManualPriceDialog" preset="dialog" :title="`录入手工价 — ${manualPriceForm.symbolName || manualPriceForm.symbol}`">
+      <div style="margin-bottom:8px;color:var(--hw-text-muted);font-size:12px">
+        手工价会覆盖自动抓取，定时刷新会跳过该标的。适用于 Yahoo 无数据的港股期权等场景。
+      </div>
+      <n-form :model="manualPriceForm" label-placement="left" label-width="80">
+        <n-form-item label="标的">
+          <n-input :value="manualPriceForm.symbol" disabled />
+        </n-form-item>
+        <n-form-item label="价格" required>
+          <n-input-number v-model:value="manualPriceForm.price" :precision="6" style="width:100%" />
+        </n-form-item>
+        <n-form-item label="币种">
+          <n-select v-model:value="manualPriceForm.currency" :options="currencyOptions" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button v-if="manualPriceForm.priceSource === 'MANUAL'"
+                  type="warning" :loading="manualPriceSubmitting"
+                  @click="clearManualPrice">恢复自动</n-button>
+        <n-button @click="showManualPriceDialog = false">取消</n-button>
+        <n-button type="primary" :loading="manualPriceSubmitting" @click="submitManualPrice">保存</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -346,6 +375,7 @@ import { ref, onMounted, computed, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
 import { holdingsApi, cashBalanceApi, holdingGroupApi } from '@/api/holdings'
 import { accountsApi } from '@/api/accounts'
+import { dashboardApi } from '@/api/dashboard'
 import { formatCny, formatNumber, formatPct, MARKET_TYPE_LABELS } from '@/utils/currency'
 
 const message = useMessage()
@@ -485,6 +515,7 @@ const aggregatedHoldings = computed(() => {
         priceCurrency: h.priceCurrency,
         priceChangePct: h.priceChangePct,
         isStale: h.isStale,
+        priceSource: h.priceSource,
         totalQuantity: 0,
         totalMarketValueCny: 0,
         totalUnrealizedPnl: null as number | null,
@@ -617,6 +648,66 @@ async function closeHolding(id: number) {
     await loadHoldings()
   } catch (e: any) {
     message.error(e.message)
+  }
+}
+
+// ── 手工录入价格 ──
+const showManualPriceDialog = ref(false)
+const manualPriceSubmitting = ref(false)
+const manualPriceForm = ref({
+  symbol: '',
+  symbolName: '',
+  price: null as number | null,
+  currency: 'CNY',
+  priceSource: '' as string
+})
+
+function openManualPriceDialog(g: any) {
+  manualPriceForm.value = {
+    symbol: g.symbol,
+    symbolName: g.symbolName,
+    // 当前是手工价时回填便于微调；否则空着让用户输入
+    price: g.priceSource === 'MANUAL' ? Number(g.currentPrice) : null,
+    currency: g.priceCurrency || 'CNY',
+    priceSource: g.priceSource || ''
+  }
+  showManualPriceDialog.value = true
+}
+
+async function submitManualPrice() {
+  const f = manualPriceForm.value
+  if (!f.price || f.price <= 0) {
+    message.error('价格必须大于 0')
+    return
+  }
+  manualPriceSubmitting.value = true
+  try {
+    await dashboardApi.upsertManualPrice({
+      symbol: f.symbol,
+      price: f.price,
+      currency: f.currency
+    })
+    message.success('已保存手工价')
+    showManualPriceDialog.value = false
+    await loadHoldings()
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
+  } finally {
+    manualPriceSubmitting.value = false
+  }
+}
+
+async function clearManualPrice() {
+  manualPriceSubmitting.value = true
+  try {
+    await dashboardApi.deleteManualPrice(manualPriceForm.value.symbol)
+    message.success('已清除手工价，下次刷新恢复自动数据源')
+    showManualPriceDialog.value = false
+    await loadHoldings()
+  } catch (e: any) {
+    message.error(e.message || '清除失败')
+  } finally {
+    manualPriceSubmitting.value = false
   }
 }
 

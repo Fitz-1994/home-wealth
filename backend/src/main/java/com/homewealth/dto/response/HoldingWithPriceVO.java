@@ -21,4 +21,5 @@ public class HoldingWithPriceVO {
     private BigDecimal priceChangePct;
     private LocalDateTime priceUpdatedAt;
     private boolean isStale;
+    private String priceSource;  // YAHOO / SINA / MANUAL，前端用于显示"手工价"标签
 }

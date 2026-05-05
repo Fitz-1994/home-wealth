@@ -41,10 +41,21 @@ function renderChart() {
     },
     yAxis: {
       type: 'value',
+      scale: true,
+      min: (value: { min: number; max: number }) => {
+        const span = value.max - value.min
+        const pad = span > 0 ? span * 0.2 : Math.abs(value.min) * 0.05
+        return Math.max(0, value.min - pad)
+      },
+      max: (value: { min: number; max: number }) => {
+        const span = value.max - value.min
+        const pad = span > 0 ? span * 0.2 : Math.abs(value.max) * 0.05
+        return value.max + pad
+      },
       axisLabel: {
         fontSize: 11,
         formatter: (v: number) => {
-          if (v >= 1e8) return `${(v / 1e8).toFixed(0)}亿`
+          if (v >= 1e8) return `${(v / 1e8).toFixed(2)}亿`
           if (v >= 1e4) return `${(v / 1e4).toFixed(0)}万`
           return v.toString()
         }

@@ -16,5 +16,11 @@ export const dashboardApi = {
 
   triggerSnapshot: () => request.post('/snapshots/trigger'),
 
-  refreshMarket: () => request.post('/market/refresh')
+  refreshMarket: () => request.post('/market/refresh'),
+
+  upsertManualPrice: (data: { symbol: string; price: number; currency?: string }) =>
+    request.post('/market/manual-price', data),
+
+  deleteManualPrice: (symbol: string) =>
+    request.delete(`/market/manual-price/${encodeURIComponent(symbol)}`)
 }

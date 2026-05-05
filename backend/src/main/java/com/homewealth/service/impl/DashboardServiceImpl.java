@@ -337,6 +337,27 @@ public class DashboardServiceImpl implements DashboardService {
             }
         });
 
+        int totalCount = items.size();
+
+        // 集中度：基于全量 items 计算（截断前）
+        HoldingRankVO.ConcentrationVO concentration = new HoldingRankVO.ConcentrationVO();
+        if (total.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal top3 = BigDecimal.ZERO, top5 = BigDecimal.ZERO, top10 = BigDecimal.ZERO;
+            BigDecimal hhi = BigDecimal.ZERO;
+            for (int i = 0; i < items.size(); i++) {
+                BigDecimal mv = items.get(i).getMarketValueCny();
+                if (i < 3) top3 = top3.add(mv);
+                if (i < 5) top5 = top5.add(mv);
+                if (i < 10) top10 = top10.add(mv);
+                BigDecimal r = mv.divide(total, 6, RoundingMode.HALF_UP);
+                hhi = hhi.add(r.multiply(r));
+            }
+            concentration.setTop3(top3.divide(total, 4, RoundingMode.HALF_UP));
+            concentration.setTop5(top5.divide(total, 4, RoundingMode.HALF_UP));
+            concentration.setTop10(top10.divide(total, 4, RoundingMode.HALF_UP));
+            concentration.setHhi(hhi);
+        }
+
         // 截取 top N
         if (top > 0 && items.size() > top) {
             items = items.subList(0, top);
@@ -345,6 +366,8 @@ public class DashboardServiceImpl implements DashboardService {
         HoldingRankVO vo = new HoldingRankVO();
         vo.setItems(items);
         vo.setTotalValueCny(totalCny);
+        vo.setTotalCount(totalCount);
+        vo.setConcentration(concentration);
         return vo;
     }
 

@@ -141,6 +141,46 @@ POST {BASE_URL}/api/market/refresh
 
 ---
 
+### 8. 查询分红现金流
+
+**触发词**：分红、股息、被动收入、退休现金流、分红进度
+
+系统会自动采集 dividend 事件 + 按持仓数量计算 income records，得到 CNY-折算的家庭分红总额。
+
+**调用**：
+```
+GET {BASE_URL}/api/dividend/summary
+GET {BASE_URL}/api/dividend/history?months=12
+GET {BASE_URL}/api/dividend/detail?year=2026          # 该年所有标的
+GET {BASE_URL}/api/dividend/detail?year=2026&month=5  # 指定月
+POST {BASE_URL}/api/dividend/fetch                    # 拉取最新事件
+POST {BASE_URL}/api/dividend/backfill?months=3        # 用持仓×历史事件重算
+```
+
+**summary 返回字段**：
+- `last12MonthsTotal` — 滚动 12 月分红总额（CNY）
+- `currentYearTotal` — 本年累计
+- `currentMonthTotal` — 本月
+
+**history 返回字段**：
+- `months` — 月份列表（如 `["2026-01", "2026-02", ...]`）
+- `totals` — 对应月份的分红总额数组
+
+**detail 返回字段（list）**：
+- `symbol` / `symbolName` / `market`
+- `totalDividendCny` — CNY 折算
+- `totalDividendOriginal` / `currency` — 原币
+- `eventCount` — 该期间分红事件数
+
+**示例问答**：
+> 用户：今年我收了多少分红？
+> → 调用 summary，返回 currentYearTotal 并对比 last12MonthsTotal
+
+> 用户：哪个标的分红最多？
+> → 调用 detail?year=2026，按 totalDividendCny 排序
+
+---
+
 ## 回答规范
 
 ### 金额格式

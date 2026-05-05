@@ -25,6 +25,12 @@
         LIMIT 1
     </select>
 
+    <select id="findFirstActiveBySymbol" resultMap="HoldingMap">
+        SELECT * FROM investment_holding
+        WHERE symbol = #{symbol} AND is_active = 1
+        LIMIT 1
+    </select>
+
     <select id="findById" resultMap="HoldingMap">
         SELECT * FROM investment_holding WHERE id = #{id} AND is_active = 1
     </select>

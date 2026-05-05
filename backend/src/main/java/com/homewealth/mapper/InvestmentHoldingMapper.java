@@ -10,6 +10,8 @@ import java.util.List;
 public interface InvestmentHoldingMapper {
     InvestmentHolding findById(@Param("id") Long id);
     InvestmentHolding findByAccountAndSymbol(@Param("accountId") Long accountId, @Param("symbol") String symbol);
+    // 用于手工录入时查 symbol_name / priceCurrency，任意一条活跃持仓即可
+    InvestmentHolding findFirstActiveBySymbol(@Param("symbol") String symbol);
     List<InvestmentHolding> findByUserId(@Param("userId") Long userId,
                                           @Param("accountId") Long accountId,
                                           @Param("market") String market);

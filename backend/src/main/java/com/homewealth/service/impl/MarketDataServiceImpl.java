@@ -1,11 +1,14 @@
 package com.homewealth.service.impl;
 
+import com.homewealth.exception.BusinessException;
+import com.homewealth.exception.ErrorCode;
 import com.homewealth.mapper.InvestmentHoldingMapper;
 import com.homewealth.mapper.MarketPriceCacheMapper;
 import com.homewealth.market.ChinaFundFetcher;
 import com.homewealth.market.MarketQuote;
 import com.homewealth.market.SinaFinanceFetcher;
 import com.homewealth.market.YahooFinanceFetcher;
+import com.homewealth.model.InvestmentHolding;
 import com.homewealth.model.MarketPriceCache;
 import com.homewealth.service.ExchangeRateService;
 import com.homewealth.service.MarketDataService;
@@ -55,11 +58,22 @@ public class MarketDataServiceImpl implements MarketDataService {
 
     @Override
     public void refreshSymbols(List<String> symbols) {
-        log.info("Refreshing market prices for {} symbols", symbols.size());
+        // 跳过最新行为手工价的 symbol —— 用户已显式覆盖，不应被自动抓取覆盖
+        Set<String> manual = new HashSet<>(priceCacheMapper.findManualSymbols(symbols));
+        List<String> targets = symbols.stream().filter(s -> !manual.contains(s)).toList();
+        if (!manual.isEmpty()) {
+            log.info("Skipping {} manual-priced symbols: {}", manual.size(), manual);
+        }
+        if (targets.isEmpty()) {
+            log.info("No symbols to refresh after filtering manual ones");
+            return;
+        }
+
+        log.info("Refreshing market prices for {} symbols", targets.size());
 
         // 分离公募基金和其他标的
-        List<String> fundSymbols = symbols.stream().filter(this::isFundSymbol).toList();
-        List<String> yahooSymbols = symbols.stream().filter(s -> !isFundSymbol(s)).toList();
+        List<String> fundSymbols = targets.stream().filter(this::isFundSymbol).toList();
+        List<String> yahooSymbols = targets.stream().filter(s -> !isFundSymbol(s)).toList();
 
         // 获取 Yahoo 行情
         Map<String, MarketQuote> quotes = new HashMap<>();
@@ -80,7 +94,7 @@ public class MarketDataServiceImpl implements MarketDataService {
                 ? Collections.emptyMap()
                 : sinaFetcher.fetchChineseNames(cnHkSymbols);
 
-        for (String symbol : symbols) {
+        for (String symbol : targets) {
             MarketQuote quote = quotes.get(symbol);
             if (quote != null) {
                 // 优先使用新浪获取的中文名称（A股/港股）
@@ -121,6 +135,67 @@ public class MarketDataServiceImpl implements MarketDataService {
         if (quote.getSymbolName() != null && !quote.getSymbolName().isEmpty()) {
             holdingMapper.updateSymbolName(symbol, quote.getSymbolName());
         }
+    }
+
+    @Override
+    public MarketPriceCache upsertManualPrice(String symbol, BigDecimal price, String currency) {
+        if (symbol == null || symbol.isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "symbol 不能为空");
+        }
+        if (price == null || price.signum() <= 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "price 必须 > 0");
+        }
+        symbol = symbol.trim();
+
+        // 推断市场 + 找已有元信息（symbol_name / 默认币种）
+        String market = inferMarket(symbol);
+        InvestmentHolding holding = holdingMapper.findFirstActiveBySymbol(symbol);
+        MarketPriceCache existing = priceCacheMapper.findLatestBySymbol(symbol);
+
+        String resolvedCurrency = (currency != null && !currency.isBlank())
+                ? currency.toUpperCase()
+                : (holding != null && holding.getPriceCurrency() != null ? holding.getPriceCurrency()
+                        : (existing != null ? existing.getCurrency() : defaultCurrencyForMarket(market)));
+
+        String symbolName = (holding != null && holding.getSymbolName() != null && !holding.getSymbolName().isBlank())
+                ? holding.getSymbolName()
+                : (existing != null ? existing.getSymbolName() : symbol);
+
+        BigDecimal cnyRate = exchangeRateService.getRate(resolvedCurrency, "CNY");
+        BigDecimal cnyPrice = price.multiply(cnyRate);
+
+        MarketPriceCache cache = new MarketPriceCache();
+        cache.setSymbol(symbol);
+        cache.setSymbolName(symbolName);
+        cache.setMarket(market);
+        cache.setPrice(price);
+        cache.setCurrency(resolvedCurrency);
+        cache.setCnyRate(cnyRate);
+        cache.setCnyPrice(cnyPrice);
+        cache.setChangePct(BigDecimal.ZERO);
+        cache.setTradeDate(LocalDate.now());
+        cache.setSource("MANUAL");
+        cache.setIsStale(false);
+
+        priceCacheMapper.upsert(cache);
+        log.info("Manual price upserted: {} = {} {} (CNY rate {})", symbol, price, resolvedCurrency, cnyRate);
+        return cache;
+    }
+
+    @Override
+    public void deleteManualPrice(String symbol) {
+        if (symbol == null || symbol.isBlank()) return;
+        int affected = priceCacheMapper.deleteManualBySymbol(symbol.trim());
+        log.info("Cleared {} manual price rows for symbol {}", affected, symbol);
+    }
+
+    private String defaultCurrencyForMarket(String market) {
+        return switch (market) {
+            case "CN_A", "CN_FUND" -> "CNY";
+            case "HK", "HK_OPT" -> "HKD";
+            case "FX" -> "CNY";
+            default -> "USD";
+        };
     }
 
     private boolean isFundSymbol(String symbol) {

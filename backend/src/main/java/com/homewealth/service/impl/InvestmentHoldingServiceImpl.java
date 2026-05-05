@@ -173,6 +173,7 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
             vo.setPriceChangePct(price.getChangePct());
             vo.setPriceUpdatedAt(price.getFetchedAt());
             vo.setStale(price.getIsStale());
+            vo.setPriceSource(price.getSource());
 
             // 市值 = 数量 × 单价 × cny汇率
             BigDecimal marketValue = holding.getQuantity()

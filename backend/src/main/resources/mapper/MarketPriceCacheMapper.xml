@@ -64,4 +64,20 @@
         DELETE FROM market_price_cache WHERE trade_date &lt; #{date}
     </delete>
 
+    <select id="findManualSymbols" resultType="java.lang.String">
+        SELECT p.symbol FROM market_price_cache p
+        INNER JOIN (
+            SELECT symbol, MAX(trade_date) AS max_date
+            FROM market_price_cache
+            WHERE symbol IN
+            <foreach collection="symbols" item="s" open="(" separator="," close=")">#{s}</foreach>
+            GROUP BY symbol
+        ) latest ON p.symbol = latest.symbol AND p.trade_date = latest.max_date
+        WHERE p.source = 'MANUAL'
+    </select>
+
+    <delete id="deleteManualBySymbol">
+        DELETE FROM market_price_cache WHERE symbol = #{symbol} AND source = 'MANUAL'
+    </delete>
+
 </mapper>

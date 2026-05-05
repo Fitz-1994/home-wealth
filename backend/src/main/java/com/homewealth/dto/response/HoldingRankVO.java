@@ -8,6 +8,16 @@ import java.util.List;
 public class HoldingRankVO {
     private List<HoldingRankItem> items;
     private BigDecimal totalValueCny;
+    private Integer totalCount;
+    private ConcentrationVO concentration;
+
+    @Data
+    public static class ConcentrationVO {
+        private BigDecimal top3;
+        private BigDecimal top5;
+        private BigDecimal top10;
+        private BigDecimal hhi;
+    }
 
     @Data
     public static class HoldingRankItem {

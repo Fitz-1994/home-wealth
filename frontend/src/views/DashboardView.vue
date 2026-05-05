@@ -159,6 +159,34 @@
       <n-spin :show="loading.rank">
         <n-empty v-if="!holdingRank.items?.length" description="暂无持仓数据" />
         <template v-else>
+          <div v-if="concentration" class="concentration-stats">
+            <div class="stat-cell">
+              <div class="stat-label">持仓数</div>
+              <div class="stat-value">{{ concentration.count }}</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">前3集中度</div>
+              <div class="stat-value">{{ (concentration.top3 * 100).toFixed(1) }}%</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">前5集中度</div>
+              <div class="stat-value">{{ (concentration.top5 * 100).toFixed(1) }}%</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">前10集中度</div>
+              <div class="stat-value">{{ (concentration.top10 * 100).toFixed(1) }}%</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">
+                HHI
+                <n-tooltip trigger="hover" placement="top">
+                  <template #trigger><span class="stat-hint">?</span></template>
+                  赫芬达尔指数 = Σ(单仓占比²)。&lt;0.15 分散，0.15–0.25 适中，&gt;0.25 集中
+                </n-tooltip>
+              </div>
+              <div class="stat-value">{{ (concentration.hhi * 10000).toFixed(0) }}</div>
+            </div>
+          </div>
           <TreemapChart v-if="rankView === 'treemap'" :items="holdingRank.items" />
           <div v-else class="holding-rank">
             <div v-for="(item, idx) in holdingRank.items" :key="item.groupId ? `g${item.groupId}` : item.holdingId" class="rank-item">
@@ -193,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useMessage } from 'naive-ui'
 import * as echarts from 'echarts'
 import { dashboardApi } from '@/api/dashboard'
@@ -274,6 +302,18 @@ async function loadHoldingRank() {
   loading.value.rank = true
   try { holdingRank.value = await dashboardApi.holdingRank() } finally { loading.value.rank = false }
 }
+
+const concentration = computed(() => {
+  const rank = holdingRank.value
+  if (!rank?.items?.length || !rank.concentration) return null
+  return {
+    count: rank.totalCount ?? rank.items.length,
+    top3: Number(rank.concentration.top3) || 0,
+    top5: Number(rank.concentration.top5) || 0,
+    top10: Number(rank.concentration.top10) || 0,
+    hhi: Number(rank.concentration.hhi) || 0
+  }
+})
 
 async function refreshMarket() {
   refreshing.value = true
@@ -433,6 +473,26 @@ onUnmounted(() => {
 .chart-card { margin-bottom: 16px; }
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
+
+.concentration-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: var(--hw-bg-secondary, rgba(128,128,128,0.06));
+  border: 1px solid var(--hw-border);
+  border-radius: 8px;
+}
+.stat-cell { display: flex; flex-direction: column; gap: 4px; }
+.stat-label { font-size: 12px; color: var(--hw-text-secondary); display: flex; align-items: center; gap: 4px; }
+.stat-value { font-size: 18px; font-weight: 600; }
+.stat-hint {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--hw-text-secondary); color: var(--hw-bg, #fff);
+  font-size: 10px; font-weight: bold; cursor: help;
+}
 
 .holding-rank { display: flex; flex-direction: column; gap: 12px; }
 .rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--hw-border); }

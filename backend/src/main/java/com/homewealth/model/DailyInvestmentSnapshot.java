@@ -19,5 +19,6 @@ public class DailyInvestmentSnapshot {
     private BigDecimal hkOptValueCny;
     private BigDecimal usOptValueCny;
     private BigDecimal otherValueCny;
+    private BigDecimal netCashflowCny;
     private LocalDateTime createdAt;
 }

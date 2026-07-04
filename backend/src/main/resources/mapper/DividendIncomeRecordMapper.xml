@@ -57,6 +57,13 @@
             dividend_amount_cny = VALUES(dividend_amount_cny)
     </insert>
 
+    <select id="findOne" resultMap="DividendIncomeRecordMap">
+        SELECT * FROM dividend_income_record
+        WHERE user_id = #{userId} AND account_id = #{accountId}
+          AND symbol = #{symbol} AND ex_dividend_date = #{exDividendDate}
+        LIMIT 1
+    </select>
+
     <select id="findTotal" resultType="java.math.BigDecimal">
         SELECT COALESCE(SUM(dividend_amount_cny), 0)
         FROM dividend_income_record

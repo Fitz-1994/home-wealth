@@ -57,7 +57,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import {
   HomeOutline, WalletOutline, TrendingUpOutline, SettingsOutline,
-  SunnyOutline, MoonOutline, PartlySunnyOutline
+  SunnyOutline, MoonOutline, PartlySunnyOutline, ReceiptOutline, AnalyticsOutline
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -87,13 +87,16 @@ const menuOptions = [
   { label: '资产大盘', key: 'dashboard', icon: () => h(HomeOutline) },
   { label: '账户管理', key: 'accounts', icon: () => h(WalletOutline) },
   { label: '投资持仓', key: 'holdings', icon: () => h(TrendingUpOutline) },
+  { label: '交易流水', key: 'transactions', icon: () => h(ReceiptOutline) },
+  { label: '收益分析', key: 'returns', icon: () => h(AnalyticsOutline) },
   { label: '设置', key: 'settings', icon: () => h(SettingsOutline) }
 ]
 
 const mobileNavItems = [
   { key: 'dashboard', label: '大盘', icon: HomeOutline },
-  { key: 'accounts', label: '账户', icon: WalletOutline },
   { key: 'holdings', label: '持仓', icon: TrendingUpOutline },
+  { key: 'transactions', label: '流水', icon: ReceiptOutline },
+  { key: 'returns', label: '收益', icon: AnalyticsOutline },
   { key: 'settings', label: '设置', icon: SettingsOutline }
 ]
 

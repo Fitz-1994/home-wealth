@@ -37,7 +37,12 @@ public enum ErrorCode {
 
     // API Key
     API_KEY_NOT_FOUND(5001, "API Key不存在"),
-    API_KEY_INVALID(5002, "API Key无效或已过期");
+    API_KEY_INVALID(5002, "API Key无效或已过期"),
+
+    // 交易流水
+    TRANSACTION_NOT_FOUND(7001, "交易记录不存在"),
+    TRANSACTION_TYPE_INVALID(7002, "交易类型无效"),
+    INSUFFICIENT_QUANTITY(7003, "持仓数量不足以卖出");
 
     private final int code;
     private final String message;

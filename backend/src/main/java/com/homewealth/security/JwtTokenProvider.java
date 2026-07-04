@@ -27,14 +27,16 @@ public class JwtTokenProvider {
 
     public String generateToken(Long userId, String username) {
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpiration);
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(username)
                 .claim("userId", userId)
                 .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(getSigningKey())
-                .compact();
+                .signWith(getSigningKey());
+        // expiration <= 0 表示永不过期（内网私有化部署场景），不设置 exp claim
+        if (jwtExpiration > 0) {
+            builder.expiration(new Date(now.getTime() + jwtExpiration));
+        }
+        return builder.compact();
     }
 
     public String getUsernameFromToken(String token) {

@@ -27,7 +27,8 @@ mybatis:
 
 jwt:
   secret: ${JWT_SECRET:home-wealth-default-secret-key-change-in-production-min-256bits}
-  expiration: ${JWT_EXPIRATION:86400000}
+  # 单位毫秒；<= 0 表示永不过期（内网私有化部署）
+  expiration: ${JWT_EXPIRATION:0}
 
 market:
   yahoo:

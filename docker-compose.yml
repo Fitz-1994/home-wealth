@@ -39,7 +39,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-hwuser}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hwpassword}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-key-in-production-min-32chars}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-0}
       AI_PROVIDER: ${AI_PROVIDER:-anthropic}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_API_URL: ${AI_API_URL:-https://api.anthropic.com/v1/messages}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.BenchmarkQuoteMapper">
+
+    <resultMap id="BenchmarkQuoteMap" type="com.homewealth.model.BenchmarkQuote">
+        <id property="id" column="id"/>
+        <result property="symbol" column="symbol"/>
+        <result property="name" column="name"/>
+        <result property="quoteDate" column="quote_date"/>
+        <result property="close" column="close"/>
+        <result property="currency" column="currency"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="upsert">
+        INSERT INTO benchmark_quote (symbol, name, quote_date, close, currency, source)
+        VALUES (#{symbol}, #{name}, #{quoteDate}, #{close}, #{currency}, #{source})
+        ON DUPLICATE KEY UPDATE
+            name     = VALUES(name),
+            close    = VALUES(close),
+            currency = VALUES(currency),
+            source   = VALUES(source)
+    </insert>
+
+    <select id="findBySymbol" resultMap="BenchmarkQuoteMap">
+        SELECT * FROM benchmark_quote
+        WHERE symbol = #{symbol}
+        ORDER BY quote_date ASC
+    </select>
+
+    <select id="findDistinctSymbols" resultType="string">
+        SELECT DISTINCT symbol FROM benchmark_quote
+    </select>
+
+    <delete id="deleteBefore">
+        DELETE FROM benchmark_quote WHERE quote_date &lt; #{date}
+    </delete>
+
+</mapper>

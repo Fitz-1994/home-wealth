@@ -15,4 +15,7 @@ public interface DailyInvestmentSnapshotMapper {
                                                 @Param("startDate") LocalDate startDate,
                                                 @Param("endDate") LocalDate endDate);
     void upsert(DailyInvestmentSnapshot snapshot);
+
+    /** 全局最早快照日期（组合数据起始日），无数据时返回 null */
+    LocalDate findEarliestDate();
 }

@@ -52,7 +52,8 @@ public class AuthServiceImpl implements AuthService {
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);
-        response.setExpiresIn(jwtExpiration / 1000);
+        // expiration <= 0 表示永不过期，expiresIn 返回 0
+        response.setExpiresIn(jwtExpiration > 0 ? jwtExpiration / 1000 : 0);
 
         LoginResponse.UserVO userVO = new LoginResponse.UserVO();
         userVO.setId(user.getId());

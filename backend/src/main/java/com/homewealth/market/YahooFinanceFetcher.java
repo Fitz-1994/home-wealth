@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -48,6 +50,7 @@ public class YahooFinanceFetcher {
     private static final String BASE_URL = "https://query2.finance.yahoo.com";
     private static final String CHART_PATH = "/v8/finance/chart/%s?interval=1d&range=1d";
     private static final String DIVIDEND_PATH = "/v8/finance/chart/%s?interval=1d&range=1y&events=dividends";
+    private static final String HISTORY_PATH = "/v8/finance/chart/%s?interval=1d&range=%s";
 
     private HttpClient httpClient;
 
@@ -92,6 +95,38 @@ public class YahooFinanceFetcher {
         }
     }
 
+    /**
+     * 抓取历史日线收盘价。
+     *
+     * @param symbol Yahoo 格式代码（支持 ^GSPC 等指数符号）
+     * @param range  Yahoo range 参数：5d / 1mo / 6mo / 1y / 2y / 5y / max
+     */
+    public List<DailyClose> fetchDailyCloses(String symbol, String range) {
+        try {
+            String url = BASE_URL + String.format(HISTORY_PATH, encodeSymbol(symbol), range);
+
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("User-Agent", userAgent)
+                    .header("Accept", "application/json")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .timeout(Duration.ofSeconds(15))
+                    .GET().build();
+
+            HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                log.warn("Yahoo Finance history API HTTP {} for symbol {}", response.statusCode(), symbol);
+                return Collections.emptyList();
+            }
+
+            return parseHistoryResponse(symbol, response.body());
+        } catch (Exception e) {
+            log.error("Failed to fetch history for {}: {}", symbol, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     // ---- 分红数据接口 ----
 
     public Map<String, List<DividendInfo>> fetchDividends(List<String> symbols) {
@@ -120,7 +155,7 @@ public class YahooFinanceFetcher {
     }
 
     private List<DividendInfo> fetchOneDividend(String symbol) throws Exception {
-        String url = BASE_URL + String.format(DIVIDEND_PATH, symbol);
+        String url = BASE_URL + String.format(DIVIDEND_PATH, encodeSymbol(symbol));
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -186,10 +221,59 @@ public class YahooFinanceFetcher {
         return dividends;
     }
 
+    private List<DailyClose> parseHistoryResponse(String symbol, String json) throws Exception {
+        JsonNode root = objectMapper.readTree(json);
+        JsonNode chart = root.path("chart");
+
+        JsonNode errorNode = chart.path("error");
+        if (!errorNode.isNull()) {
+            log.warn("Yahoo Finance history error for {}: {}", symbol, errorNode);
+            return Collections.emptyList();
+        }
+
+        JsonNode results = chart.path("result");
+        if (!results.isArray() || results.isEmpty()) return Collections.emptyList();
+
+        JsonNode firstResult = results.get(0);
+        JsonNode meta = firstResult.path("meta");
+        String currency = meta.path("currency").asText("USD");
+        // 用交易所时区把时间戳转成当地交易日，避免美股收盘时间落到北京时间次日
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(meta.path("exchangeTimezoneName").asText(""));
+        } catch (Exception e) {
+            zone = ZoneId.systemDefault();
+        }
+
+        JsonNode timestamps = firstResult.path("timestamp");
+        JsonNode closes = firstResult.path("indicators").path("quote").path(0).path("close");
+        if (!timestamps.isArray() || !closes.isArray()) return Collections.emptyList();
+
+        List<DailyClose> result = new ArrayList<>();
+        for (int i = 0; i < timestamps.size(); i++) {
+            JsonNode closeNode = closes.path(i);
+            if (closeNode.isNull() || !closeNode.isNumber()) continue;   // 停牌/无数据日
+            LocalDate date = Instant.ofEpochSecond(timestamps.get(i).asLong())
+                    .atZone(zone)
+                    .toLocalDate();
+            result.add(DailyClose.builder()
+                    .date(date)
+                    .close(BigDecimal.valueOf(closeNode.asDouble()).setScale(6, RoundingMode.HALF_UP))
+                    .currency(currency)
+                    .build());
+        }
+        return result;
+    }
+
     // ---- 内部实现 ----
 
+    /** Yahoo symbol 可能含 ^（指数）、=（汇率）等 URI 非法字符，需编码 */
+    private static String encodeSymbol(String symbol) {
+        return URLEncoder.encode(symbol, StandardCharsets.UTF_8);
+    }
+
     private Optional<MarketQuote> fetchOne(String symbol) throws Exception {
-        String url = BASE_URL + String.format(CHART_PATH, symbol);
+        String url = BASE_URL + String.format(CHART_PATH, encodeSymbol(symbol));
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))

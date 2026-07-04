@@ -44,6 +44,11 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_API_URL: ${AI_API_URL:-https://api.anthropic.com/v1/messages}
       AI_MODEL: ${AI_MODEL:-claude-sonnet-4-6}
+      FEISHU_ENABLED: ${FEISHU_ENABLED:-false}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      FEISHU_TARGET_CHAT_ID: ${FEISHU_TARGET_CHAT_ID:-}
+      FEISHU_RETIREMENT_TARGET: ${FEISHU_RETIREMENT_TARGET:-200000}
     ports:
       - "8080:8080"
     depends_on:

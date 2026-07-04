@@ -49,6 +49,15 @@ ai:
     api-url: ${AI_API_URL:https://api.anthropic.com/v1/messages}
     model: ${AI_MODEL:claude-sonnet-4-6}
 
+# 飞书自建应用推送（每日资产日报，从 auto-trade 迁移）
+feishu:
+  enabled: ${FEISHU_ENABLED:false}          # 总开关，默认关，配好密钥后置 true
+  app-id: ${FEISHU_APP_ID:}
+  app-secret: ${FEISHU_APP_SECRET:}
+  target-chat-id: ${FEISHU_TARGET_CHAT_ID:}
+  daily-cron: ${FEISHU_DAILY_CRON:0 0 9 * * *}                 # 每日 09:00 Asia/Shanghai
+  retirement-target-cny: ${FEISHU_RETIREMENT_TARGET:200000}    # 提前退休年度分红目标
+
 logging:
   level:
     com.homewealth: INFO

@@ -28,6 +28,7 @@ public class SnapshotServiceImpl implements SnapshotService {
     private final InvestmentHoldingMapper holdingMapper;
     private final MarketPriceCacheMapper priceCacheMapper;
     private final InvestmentCashBalanceMapper cashBalanceMapper;
+    private final InvestmentTransactionMapper txnMapper;
     private final ExchangeRateService exchangeRateService;
     private final MarketDataService marketDataService;
     private final UserMapper userMapper;
@@ -132,6 +133,11 @@ public class SnapshotServiceImpl implements SnapshotService {
         invSnapshot.setHkOptValueCny(hkOpt);
         invSnapshot.setUsOptValueCny(usOpt);
         invSnapshot.setOtherValueCny(other);
+
+        // 当日净入金（仅 CASH_IN/CASH_OUT 进入此口径，DIVIDEND/FEE 不算入金）
+        BigDecimal netCashflow = txnMapper.sumNetCashflowByDate(userId, date);
+        invSnapshot.setNetCashflowCny(netCashflow != null ? netCashflow : BigDecimal.ZERO);
+
         invSnapshotMapper.upsert(invSnapshot);
 
         log.info("Snapshot done for userId={}: net={} investment={}", userId, netAsset, investment);

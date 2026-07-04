@@ -35,6 +35,16 @@ const router = createRouter({
           component: () => import('@/views/HoldingsView.vue')
         },
         {
+          path: 'transactions',
+          name: 'transactions',
+          component: () => import('@/views/TransactionsView.vue')
+        },
+        {
+          path: 'returns',
+          name: 'returns',
+          component: () => import('@/views/ReturnsView.vue')
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue')

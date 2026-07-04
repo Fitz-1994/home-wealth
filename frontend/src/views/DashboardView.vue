@@ -90,6 +90,45 @@
       </n-card>
     </div>
 
+    <!-- 投资收益 -->
+    <n-card title="投资收益" class="chart-card">
+      <template #header-extra>
+        <n-button size="small" text type="primary" @click="$router.push({ name: 'returns' })">查看详情 →</n-button>
+      </template>
+      <div v-if="returnSummary" class="overview-cards" style="margin-bottom:16px">
+        <n-card class="overview-card">
+          <div class="card-label">今年以来</div>
+          <div class="card-value" :class="returnCls(returnSummary.ytdPct)">{{ fmtPct(returnSummary.ytdPct) }}</div>
+          <div class="return-sub" :class="returnCls(returnSummary.ytdPnl)">{{ formatCny(returnSummary.ytdPnl) }}</div>
+        </n-card>
+        <n-card class="overview-card">
+          <div class="card-label">近 1 月</div>
+          <div class="card-value" :class="returnCls(returnSummary.month1Pct)">{{ fmtPct(returnSummary.month1Pct) }}</div>
+          <div class="return-sub" :class="returnCls(returnSummary.month1Pnl)">{{ formatCny(returnSummary.month1Pnl) }}</div>
+        </n-card>
+        <n-card class="overview-card">
+          <div class="card-label">近 3 月</div>
+          <div class="card-value" :class="returnCls(returnSummary.month3Pct)">{{ fmtPct(returnSummary.month3Pct) }}</div>
+          <div class="return-sub" :class="returnCls(returnSummary.month3Pnl)">{{ formatCny(returnSummary.month3Pnl) }}</div>
+        </n-card>
+        <n-card class="overview-card">
+          <div class="card-label">自上线以来</div>
+          <div class="card-value" :class="returnCls(returnSummary.inceptionPct)">{{ fmtPct(returnSummary.inceptionPct) }}</div>
+          <div class="return-sub" :class="returnCls(returnSummary.inceptionPnl)">{{ formatCny(returnSummary.inceptionPnl) }}</div>
+        </n-card>
+      </div>
+      <n-spin :show="loading.returns">
+        <div class="dividend-chart-header"><span>{{ currentYear }} 年月度收益率</span></div>
+        <ReturnBarChart
+          v-if="monthlyReturns.length"
+          :categories="monthlyReturnCategories"
+          :values="monthlyReturnValues"
+          unit="pct"
+        />
+        <n-empty v-else description="暂无收益数据，请先生成快照" />
+      </n-spin>
+    </n-card>
+
     <!-- 分红统计 -->
     <n-card title="分红收入" class="chart-card">
       <template #header-extra>
@@ -226,10 +265,12 @@ import { useMessage } from 'naive-ui'
 import * as echarts from 'echarts'
 import { dashboardApi } from '@/api/dashboard'
 import { dividendApi } from '@/api/dividend'
+import { returnsApi } from '@/api/returns'
 import { formatCny, formatPct, ASSET_CATEGORY_LABELS, MARKET_TYPE_LABELS } from '@/utils/currency'
 import SankeyChart from '@/components/charts/SankeyChart.vue'
 import LineChart from '@/components/charts/LineChart.vue'
 import TreemapChart from '@/components/charts/TreemapChart.vue'
+import ReturnBarChart from '@/components/charts/ReturnBarChart.vue'
 
 const message = useMessage()
 
@@ -253,8 +294,42 @@ let dividendEchart: echarts.ECharts | null = null
 
 const loading = ref({
   overview: false, sankey: false, netAsset: false, investment: false, rank: false,
-  dividend: false, dividendFetch: false, dividendBackfill: false
+  dividend: false, dividendFetch: false, dividendBackfill: false, returns: false
 })
+
+// ── 投资收益 ──
+const returnSummary = ref<any>(null)
+const monthlyReturns = ref<any[]>([])
+const currentYear = new Date().getFullYear()
+
+const monthlyReturnCategories = computed(() => monthlyReturns.value.map((r: any) => r.period))
+const monthlyReturnValues = computed(() => monthlyReturns.value.map((r: any) => Number(r.returnPct) || 0))
+
+function fmtPct(v: any): string {
+  const n = Number(v)
+  if (isNaN(n)) return '—'
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
+function returnCls(v: any): string {
+  const n = Number(v)
+  if (isNaN(n) || n === 0) return ''
+  return n > 0 ? 'return-up' : 'return-down'
+}
+
+async function loadReturns() {
+  loading.value.returns = true
+  try {
+    const [s, m] = await Promise.all([
+      returnsApi.summary(),
+      returnsApi.monthly(currentYear)
+    ])
+    returnSummary.value = s
+    monthlyReturns.value = m as any[]
+  } catch { /* ignore */ } finally {
+    loading.value.returns = false
+  }
+}
 
 const dayOptions = [
   { label: '近90天', value: 90 },
@@ -448,7 +523,7 @@ onMounted(() => {
   Promise.all([
     loadOverview(), loadSankey(),
     loadNetAssetHistory(), loadInvestmentHistory(), loadHoldingRank(),
-    loadDividendSummary(), loadDividendHistory()
+    loadDividendSummary(), loadDividendHistory(), loadReturns()
   ])
 })
 
@@ -505,6 +580,10 @@ onUnmounted(() => {
 .rank-change { width: 64px; text-align: right; font-weight: 500; }
 .rank-change.up { color: #d03050; }
 .rank-change.down { color: #18a058; }
+
+.return-sub { font-size: 13px; margin-top: 2px; color: var(--hw-text-secondary); }
+.return-up { color: #d03050; }
+.return-down { color: #18a058; }
 
 .dividend-value { color: #f0a020; }
 .dividend-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 500; }

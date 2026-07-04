@@ -16,6 +16,11 @@ public interface DividendIncomeRecordMapper {
 
     void batchUpsert(@Param("records") List<DividendIncomeRecord> records);
 
+    DividendIncomeRecord findOne(@Param("userId") Long userId,
+                                  @Param("accountId") Long accountId,
+                                  @Param("symbol") String symbol,
+                                  @Param("exDividendDate") java.time.LocalDate exDividendDate);
+
     BigDecimal findTotal(@Param("userId") Long userId,
                          @Param("startDate") LocalDate startDate,
                          @Param("endDate") LocalDate endDate);

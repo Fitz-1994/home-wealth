@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS `daily_investment_snapshot` (
   `hk_opt_value_cny` DECIMAL(20, 4) NOT NULL DEFAULT 0 COMMENT '港股期权市值',
   `us_opt_value_cny` DECIMAL(20, 4) NOT NULL DEFAULT 0 COMMENT '美股期权市值',
   `other_value_cny`  DECIMAL(20, 4) NOT NULL DEFAULT 0 COMMENT '其他投资市值',
+  `net_cashflow_cny` DECIMAL(20, 4) NOT NULL DEFAULT 0 COMMENT '当日净入金 CNY (CASH_IN - CASH_OUT)，用于 Modified Dietz',
   `created_at`       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_user_date` (`user_id`, `snapshot_date`),
@@ -298,6 +299,57 @@ CREATE TABLE IF NOT EXISTS `dividend_income_record` (
   KEY `idx_user_exdate` (`user_id`, `ex_dividend_date`),
   CONSTRAINT `fk_div_record_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户分红收入记录表';
+
+-- ============================================
+-- 15. 投资交易流水表
+-- ============================================
+-- txn_type: BUY(买入)/SELL(卖出)/DIVIDEND(分红到账)/FEE(手续费)/CASH_IN(入金)/CASH_OUT(出金)/OPENING(开仓初始化)
+-- 仅 CASH_IN/CASH_OUT 进入 daily_investment_snapshot.net_cashflow_cny
+-- DIVIDEND 走"成本回收法"：cash_balance += 分红，holding.cost_price 按比例下降
+CREATE TABLE IF NOT EXISTS `investment_transaction` (
+  `id`           BIGINT         NOT NULL AUTO_INCREMENT,
+  `user_id`      BIGINT         NOT NULL COMMENT '所属用户',
+  `account_id`   BIGINT         NOT NULL COMMENT '关联投资账户ID',
+  `holding_id`   BIGINT                  COMMENT '关联持仓ID（CASH_IN/OUT 可空）',
+  `txn_type`     VARCHAR(16)    NOT NULL COMMENT 'BUY/SELL/DIVIDEND/FEE/CASH_IN/CASH_OUT/OPENING',
+  `symbol`       VARCHAR(50)             COMMENT '标的代码（现金流可空）',
+  `market`       VARCHAR(20)             COMMENT '市场（现金流可空）',
+  `trade_date`   DATE           NOT NULL COMMENT '交易日',
+  `quantity`     DECIMAL(20, 6)          COMMENT '股数（BUY/SELL/OPENING/DIVIDEND有，现金流空）',
+  `price`        DECIMAL(20, 6)          COMMENT '成交价（原币）',
+  `amount`       DECIMAL(20, 4) NOT NULL COMMENT '原币总额（含费）',
+  `fee`          DECIMAL(20, 4) NOT NULL DEFAULT 0 COMMENT '手续费（原币）',
+  `currency`     VARCHAR(10)    NOT NULL COMMENT '币种',
+  `cny_rate`     DECIMAL(15, 6) NOT NULL DEFAULT 1.000000 COMMENT '记录时对CNY汇率',
+  `amount_cny`   DECIMAL(20, 4) NOT NULL COMMENT '折算CNY金额',
+  `is_synthetic` TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '是否系统合成（OPENING/DIVIDEND联动）',
+  `note`         VARCHAR(500)            COMMENT '备注',
+  `created_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_date` (`user_id`, `trade_date`),
+  KEY `idx_account_date` (`account_id`, `trade_date`),
+  KEY `idx_holding` (`holding_id`),
+  KEY `idx_txn_type` (`txn_type`),
+  CONSTRAINT `fk_txn_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资交易流水表';
+
+-- ============================================
+-- 16. 基准指数行情表（用于收益对比，如沪深300）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `benchmark_quote` (
+  `id`         BIGINT         NOT NULL AUTO_INCREMENT,
+  `symbol`     VARCHAR(50)    NOT NULL COMMENT '指数代码（Yahoo 格式，如 000300.SS）',
+  `name`       VARCHAR(100)            COMMENT '指数名称',
+  `quote_date` DATE           NOT NULL COMMENT '行情日期',
+  `close`      DECIMAL(20, 6) NOT NULL COMMENT '收盘点位',
+  `currency`   VARCHAR(10)    NOT NULL DEFAULT 'CNY',
+  `source`     VARCHAR(20)    NOT NULL DEFAULT 'YAHOO',
+  `created_at` DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_symbol_date` (`symbol`, `quote_date`),
+  KEY `idx_date` (`quote_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='基准指数行情表';
 
 -- ============================================
 -- 初始化种子汇率数据（定时任务启动后会自动更新）

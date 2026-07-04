@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homewealth.mapper.InvestmentTransactionMapper">
+
+    <resultMap id="TxnMap" type="com.homewealth.model.InvestmentTransaction">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="holdingId" column="holding_id"/>
+        <result property="txnType" column="txn_type"/>
+        <result property="symbol" column="symbol"/>
+        <result property="market" column="market"/>
+        <result property="tradeDate" column="trade_date"/>
+        <result property="quantity" column="quantity"/>
+        <result property="price" column="price"/>
+        <result property="amount" column="amount"/>
+        <result property="fee" column="fee"/>
+        <result property="currency" column="currency"/>
+        <result property="cnyRate" column="cny_rate"/>
+        <result property="amountCny" column="amount_cny"/>
+        <result property="isSynthetic" column="is_synthetic"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="TxnMap">
+        SELECT * FROM investment_transaction WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO investment_transaction
+            (user_id, account_id, holding_id, txn_type, symbol, market, trade_date,
+             quantity, price, amount, fee, currency, cny_rate, amount_cny, is_synthetic, note)
+        VALUES
+            (#{userId}, #{accountId}, #{holdingId}, #{txnType}, #{symbol}, #{market}, #{tradeDate},
+             #{quantity}, #{price}, #{amount}, #{fee}, #{currency}, #{cnyRate}, #{amountCny},
+             #{isSynthetic}, #{note})
+    </insert>
+
+    <update id="update">
+        UPDATE investment_transaction SET
+            symbol      = #{symbol},
+            market      = #{market},
+            trade_date  = #{tradeDate},
+            quantity    = #{quantity},
+            price       = #{price},
+            amount      = #{amount},
+            fee         = #{fee},
+            currency    = #{currency},
+            cny_rate    = #{cnyRate},
+            amount_cny  = #{amountCny},
+            note        = #{note},
+            updated_at  = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM investment_transaction WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <select id="findByUser" resultMap="TxnMap">
+        SELECT * FROM investment_transaction
+        WHERE user_id = #{userId}
+        <if test="from != null">AND trade_date &gt;= #{from}</if>
+        <if test="to != null">AND trade_date &lt;= #{to}</if>
+        <if test="txnType != null">AND txn_type = #{txnType}</if>
+        <if test="accountId != null">AND account_id = #{accountId}</if>
+        <if test="holdingId != null">AND holding_id = #{holdingId}</if>
+        ORDER BY trade_date DESC, id DESC
+        <if test="limit != null">LIMIT #{limit} <if test="offset != null">OFFSET #{offset}</if></if>
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*) FROM investment_transaction
+        WHERE user_id = #{userId}
+        <if test="from != null">AND trade_date &gt;= #{from}</if>
+        <if test="to != null">AND trade_date &lt;= #{to}</if>
+        <if test="txnType != null">AND txn_type = #{txnType}</if>
+        <if test="accountId != null">AND account_id = #{accountId}</if>
+        <if test="holdingId != null">AND holding_id = #{holdingId}</if>
+    </select>
+
+    <select id="sumNetCashflowByDate" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN txn_type = 'CASH_IN'  THEN amount_cny
+                WHEN txn_type = 'CASH_OUT' THEN -amount_cny
+                ELSE 0
+            END
+        ), 0)
+        FROM investment_transaction
+        WHERE user_id = #{userId} AND trade_date = #{date}
+    </select>
+
+    <select id="countOpeningByHolding" resultType="long">
+        SELECT COUNT(*) FROM investment_transaction
+        WHERE holding_id = #{holdingId} AND txn_type = 'OPENING'
+    </select>
+
+</mapper>

@@ -1,8 +1,10 @@
 package com.homewealth.service.impl;
 
+import com.homewealth.dto.request.CreateTransactionRequest;
 import com.homewealth.dto.response.DividendDetailVO;
 import com.homewealth.dto.response.DividendHistoryVO;
 import com.homewealth.dto.response.DividendSummaryVO;
+import com.homewealth.enums.InvestmentTxnType;
 import com.homewealth.mapper.DividendEventMapper;
 import com.homewealth.mapper.DividendIncomeRecordMapper;
 import com.homewealth.mapper.InvestmentHoldingMapper;
@@ -14,9 +16,11 @@ import com.homewealth.model.DividendIncomeRecord;
 import com.homewealth.model.InvestmentHolding;
 import com.homewealth.service.DividendService;
 import com.homewealth.service.ExchangeRateService;
+import com.homewealth.service.InvestmentTransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -35,6 +39,7 @@ public class DividendServiceImpl implements DividendService {
     private final YahooFinanceFetcher yahooFetcher;
     private final ChinaFundFetcher fundFetcher;
     private final ExchangeRateService exchangeRateService;
+    private final InvestmentTransactionService transactionService;
 
     @Override
     public void fetchAndStoreDividendEvents() {
@@ -90,6 +95,7 @@ public class DividendServiceImpl implements DividendService {
     }
 
     @Override
+    @Transactional
     public void generateDividendRecords(Long userId, LocalDate date) {
         List<InvestmentHolding> holdings = holdingMapper.findActiveByUserId(userId);
         if (holdings.isEmpty()) return;
@@ -104,7 +110,7 @@ public class DividendServiceImpl implements DividendService {
         List<DividendEvent> events = dividendEventMapper.findBySymbolsAndDateRange(symbols, startDate, date);
         if (events.isEmpty()) return;
 
-        List<DividendIncomeRecord> records = new ArrayList<>();
+        int newCount = 0;
 
         for (DividendEvent event : events) {
             for (InvestmentHolding holding : holdings) {
@@ -112,6 +118,11 @@ public class DividendServiceImpl implements DividendService {
 
                 BigDecimal quantity = holding.getQuantity();
                 if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                // 幂等：已存在则跳过联动
+                DividendIncomeRecord existing = dividendIncomeRecordMapper.findOne(
+                        userId, holding.getAccountId(), holding.getSymbol(), event.getExDividendDate());
+                if (existing != null) continue;
 
                 BigDecimal dividendAmount = quantity.multiply(event.getDividendPerShare())
                         .setScale(4, RoundingMode.HALF_UP);
@@ -141,13 +152,38 @@ public class DividendServiceImpl implements DividendService {
                 record.setCnyRate(cnyRate);
                 record.setDividendAmountCny(dividendAmountCny);
 
-                records.add(record);
+                dividendIncomeRecordMapper.upsert(record);
+                newCount++;
+
+                // 联动：写一笔 DIVIDEND 交易，触发 cash_balance 增加 + 持仓成本回收
+                try {
+                    CreateTransactionRequest req = new CreateTransactionRequest();
+                    req.setAccountId(holding.getAccountId());
+                    req.setHoldingId(holding.getId());
+                    req.setTxnType(InvestmentTxnType.DIVIDEND.name());
+                    req.setSymbol(holding.getSymbol());
+                    req.setMarket(holding.getMarket());
+                    req.setTradeDate(event.getExDividendDate());
+                    req.setQuantity(quantity);
+                    req.setPrice(event.getDividendPerShare());
+                    req.setAmount(dividendAmount);
+                    req.setFee(BigDecimal.ZERO);
+                    req.setCurrency(event.getCurrency());
+                    req.setCnyRate(cnyRate);
+                    req.setSynthetic(true);
+                    req.setNote("系统抓取分红自动联动");
+                    transactionService.create(userId, req);
+                } catch (Exception e) {
+                    log.warn("Dividend linkage failed for holding {} symbol {}: {}",
+                            holding.getId(), holding.getSymbol(), e.getMessage());
+                    throw e; // 触发整体事务回滚
+                }
             }
         }
 
-        if (!records.isEmpty()) {
-            dividendIncomeRecordMapper.batchUpsert(records);
-            log.info("Generated {} dividend income records for userId={} date={}", records.size(), userId, date);
+        if (newCount > 0) {
+            log.info("Generated {} new dividend income records (with linkage) for userId={} date={}",
+                    newCount, userId, date);
         }
     }
 

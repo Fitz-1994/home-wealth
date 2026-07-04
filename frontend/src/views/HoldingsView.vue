@@ -32,7 +32,11 @@
     <div v-if="cashBalances.length" class="cash-section">
       <div class="cash-header">
         <h3 style="margin:0;font-size:15px">账户现金</h3>
-        <n-button size="small" @click="openCashDialog()">添加现金</n-button>
+        <div style="display:flex;gap:6px">
+          <n-button size="small" @click="openCashFlow('CASH_IN')">入金</n-button>
+          <n-button size="small" @click="openCashFlow('CASH_OUT')">出金</n-button>
+          <n-button size="small" @click="openCashDialog()">手工调整</n-button>
+        </div>
       </div>
       <div class="cash-grid">
         <n-card v-for="c in cashBalances" :key="c.id" class="cash-card" size="small">
@@ -46,6 +50,8 @@
           <div class="cash-cny">≈ {{ formatCny(c.cnyAmount) }}</div>
           <div v-if="c.note" class="cash-note">{{ c.note }}</div>
           <div class="cash-actions">
+            <n-button text size="tiny" @click="openCashFlow('CASH_IN', c.accountId, c.currency)">入金</n-button>
+            <n-button text size="tiny" @click="openCashFlow('CASH_OUT', c.accountId, c.currency)">出金</n-button>
             <n-button text size="tiny" @click="openCashDialog(c)">编辑</n-button>
             <n-popconfirm @positive-click="deleteCash(c)">
               <template #trigger><n-button text size="tiny" type="error">删除</n-button></template>
@@ -59,7 +65,10 @@
     <div v-else-if="investmentAccountOptions.length" class="cash-section">
       <div class="cash-header">
         <h3 style="margin:0;font-size:15px">账户现金</h3>
-        <n-button size="small" @click="openCashDialog()">添加现金</n-button>
+        <div style="display:flex;gap:6px">
+          <n-button size="small" @click="openCashFlow('CASH_IN')">入金</n-button>
+          <n-button size="small" @click="openCashDialog()">手工添加</n-button>
+        </div>
       </div>
       <div style="color:var(--hw-text-muted);font-size:13px;margin-bottom:16px">暂无现金记录</div>
     </div>
@@ -189,6 +198,8 @@
               {{ formatPct(g.priceChangePct) }}
             </div>
             <div class="col-actions">
+              <n-button text size="tiny" type="primary" @click="openBuy(g.items[0])">加仓</n-button>
+              <n-button text size="tiny" type="warning" @click="openSell(g.items[0])">卖出</n-button>
               <n-button text size="tiny" @click="openManualPriceDialog(g)">录价</n-button>
               <template v-if="g.items.length > 1">
                 <n-button text size="tiny" @click="toggleExpand(g.key)">
@@ -343,6 +354,15 @@
       </template>
     </n-modal>
 
+    <!-- 交易快捷入口 Modal -->
+    <TxnFormModal
+      v-model:show="showTxnForm"
+      :prefill="txnPrefill"
+      :account-options="investmentAccountOptions"
+      :holdings="holdings"
+      @created="onTxnCreated"
+    />
+
     <!-- 手工录入价格对话框 -->
     <n-modal v-model:show="showManualPriceDialog" preset="dialog" :title="`录入手工价 — ${manualPriceForm.symbolName || manualPriceForm.symbol}`">
       <div style="margin-bottom:8px;color:var(--hw-text-muted);font-size:12px">
@@ -377,6 +397,7 @@ import { holdingsApi, cashBalanceApi, holdingGroupApi } from '@/api/holdings'
 import { accountsApi } from '@/api/accounts'
 import { dashboardApi } from '@/api/dashboard'
 import { formatCny, formatNumber, formatPct, MARKET_TYPE_LABELS } from '@/utils/currency'
+import TxnFormModal from '@/components/transactions/TxnFormModal.vue'
 
 const message = useMessage()
 const loading = ref(false)
@@ -909,6 +930,59 @@ async function deleteGroup(id: number) {
   } catch (e: any) {
     message.error(e.message || '删除失败')
   }
+}
+
+// ── 交易快捷入口 ──
+const showTxnForm = ref(false)
+const txnPrefill = ref<any>({})
+
+function openBuy(h: any) {
+  txnPrefill.value = {
+    txnType: 'BUY',
+    accountId: h.accountId,
+    holdingId: h.id,
+    symbol: h.symbol,
+    market: h.market,
+    currency: h.priceCurrency || 'CNY',
+    lockTxnType: true,
+    lockAccount: true,
+    lockHolding: true,
+    lockCurrency: true
+  }
+  showTxnForm.value = true
+}
+
+function openSell(h: any) {
+  txnPrefill.value = {
+    txnType: 'SELL',
+    accountId: h.accountId,
+    holdingId: h.id,
+    symbol: h.symbol,
+    market: h.market,
+    currency: h.priceCurrency || 'CNY',
+    lockTxnType: true,
+    lockAccount: true,
+    lockHolding: true,
+    lockCurrency: true
+  }
+  showTxnForm.value = true
+}
+
+function openCashFlow(type: 'CASH_IN' | 'CASH_OUT', accountId?: number, currency?: string) {
+  txnPrefill.value = {
+    txnType: type,
+    accountId: accountId ?? null,
+    currency: currency ?? 'CNY',
+    lockTxnType: true,
+    lockAccount: !!accountId,
+    lockCurrency: !!currency
+  }
+  showTxnForm.value = true
+}
+
+async function onTxnCreated() {
+  await loadHoldings()
+  await loadCashBalances()
 }
 
 onMounted(async () => {

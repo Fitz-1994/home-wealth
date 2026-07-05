@@ -55,13 +55,21 @@ public class NotificationServiceImpl implements NotificationService {
     @Value("${feishu.retirement-target-cny:200000}")
     private BigDecimal retirementTarget;
 
+    /** 日报白名单：逗号分隔的用户 id；留空表示所有活跃用户 */
+    @Value("${feishu.digest-user-ids:}")
+    private String digestUserIds;
+
     @Override
     public void pushDailyDigest() {
         if (!feishuClient.isEnabled()) {
             log.info("[Notify] Feishu disabled, skip daily digest");
             return;
         }
-        List<Long> userIds = userMapper.findAllActiveUserIds();
+        List<Long> userIds = resolveDigestUserIds();
+        if (userIds.isEmpty()) {
+            log.info("[Notify] no target user for daily digest, skip");
+            return;
+        }
         for (Long userId : userIds) {
             try {
                 pushDailyDigestForUser(userId);
@@ -69,6 +77,32 @@ public class NotificationServiceImpl implements NotificationService {
                 log.error("[Notify] daily digest failed for userId={}", userId, e);
             }
         }
+    }
+
+    /**
+     * 解析日报目标用户：配置了白名单则取「白名单 ∩ 活跃用户」（顺序按白名单），
+     * 白名单为空则回退为所有活跃用户。非法 id 段忽略。
+     */
+    private List<Long> resolveDigestUserIds() {
+        List<Long> active = userMapper.findAllActiveUserIds();
+        if (isBlank(digestUserIds)) {
+            return active;
+        }
+        java.util.Set<Long> activeSet = new java.util.HashSet<>(active);
+        List<Long> result = new ArrayList<>();
+        for (String part : digestUserIds.split(",")) {
+            String s = part.trim();
+            if (s.isEmpty()) continue;
+            try {
+                Long id = Long.valueOf(s);
+                if (activeSet.contains(id) && !result.contains(id)) {
+                    result.add(id);
+                }
+            } catch (NumberFormatException e) {
+                log.warn("[Notify] ignore invalid digest user id: {}", s);
+            }
+        }
+        return result;
     }
 
     @Override

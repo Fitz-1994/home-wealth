@@ -57,6 +57,7 @@ feishu:
   target-chat-id: ${FEISHU_TARGET_CHAT_ID:}
   daily-cron: ${FEISHU_DAILY_CRON:0 0 9 * * *}                 # 每日 09:00 Asia/Shanghai
   retirement-target-cny: ${FEISHU_RETIREMENT_TARGET:200000}    # 提前退休年度分红目标
+  digest-user-ids: ${FEISHU_DIGEST_USER_IDS:}                  # 日报白名单用户 id（逗号分隔）；留空=所有活跃用户
 
 logging:
   level:

@@ -34,6 +34,10 @@
         SELECT DISTINCT symbol FROM benchmark_quote
     </select>
 
+    <select id="countByDate" resultType="int">
+        SELECT COUNT(*) FROM benchmark_quote WHERE quote_date = #{date}
+    </select>
+
     <delete id="deleteBefore">
         DELETE FROM benchmark_quote WHERE quote_date &lt; #{date}
     </delete>

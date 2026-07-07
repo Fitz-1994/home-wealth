@@ -1,9 +1,11 @@
 package com.homewealth.service.impl;
 
+import com.homewealth.dto.response.DailyReturnVO;
 import com.homewealth.dto.response.DashboardOverviewVO;
 import com.homewealth.dto.response.DividendSummaryVO;
 import com.homewealth.dto.response.MonthlyReturnVO;
 import com.homewealth.dto.response.ReturnSummaryVO;
+import com.homewealth.mapper.BenchmarkQuoteMapper;
 import com.homewealth.mapper.UserMapper;
 import com.homewealth.model.User;
 import com.homewealth.notify.FeishuClient;
@@ -51,6 +53,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final DividendService dividendService;
     private final DashboardService dashboardService;
     private final FeishuClient feishuClient;
+    private final BenchmarkQuoteMapper benchmarkQuoteMapper;
 
     @Value("${feishu.retirement-target-cny:200000}")
     private BigDecimal retirementTarget;
@@ -63,6 +66,11 @@ public class NotificationServiceImpl implements NotificationService {
     public void pushDailyDigest() {
         if (!feishuClient.isEnabled()) {
             log.info("[Notify] Feishu disabled, skip daily digest");
+            return;
+        }
+        LocalDate reportDate = LocalDate.now(ZONE).minusDays(1);
+        if (!isTradingDay(reportDate)) {
+            log.info("[Notify] {} is not a trading day (no HK/A/US market open), skip daily digest", reportDate);
             return;
         }
         List<Long> userIds = resolveDigestUserIds();
@@ -105,10 +113,21 @@ public class NotificationServiceImpl implements NotificationService {
         return result;
     }
 
+    /**
+     * 报告日是否为交易日 —— 港/A/美股任一市场开市即算。
+     * 以 benchmark_quote 当日是否有收盘点位为准：沪深300/上证(A股)、恒生(港股)、标普500/纳斯达克(美股)。
+     * 美股 T-1 收盘于次日 06:00 入库，早于 09:00 推送，故 09:00 判定时三市场数据均已齐备。
+     * 仅用于定时推送；手动触发 pushDailyDigestForUser 不受此限制，便于随时测试。
+     */
+    private boolean isTradingDay(LocalDate date) {
+        return benchmarkQuoteMapper.countByDate(date) > 0;
+    }
+
     @Override
     public void pushDailyDigestForUser(Long userId) {
         LocalDate reportDate = LocalDate.now(ZONE).minusDays(1);
 
+        DailyReturnVO dayReturn = dailyReturn(userId, reportDate);
         MonthlyReturnVO monthReturn = currentMonthReturn(userId, reportDate);
         ReturnSummaryVO summary = investmentReturnService.getReturnSummary(userId);
         DividendSummaryVO dividend = dividendService.getDividendSummary(userId);
@@ -118,8 +137,14 @@ public class NotificationServiceImpl implements NotificationService {
         String displayName = user == null ? null
                 : (isBlank(user.getDisplayName()) ? user.getUsername() : user.getDisplayName());
 
-        Map<String, Object> card = buildCard(reportDate, displayName, monthReturn, summary, dividend, overview);
+        Map<String, Object> card = buildCard(reportDate, displayName, dayReturn, monthReturn, summary, dividend, overview);
         feishuClient.sendCard(null, card);
+    }
+
+    /** 取报告日（T-1）当日收益，无对应快照时返回 null */
+    private DailyReturnVO dailyReturn(Long userId, LocalDate reportDate) {
+        List<DailyReturnVO> list = investmentReturnService.getDailyReturns(userId, reportDate, reportDate);
+        return list.isEmpty() ? null : list.get(0);
     }
 
     /** 取报告日所在自然月的收益（本月至今） */
@@ -134,7 +159,8 @@ public class NotificationServiceImpl implements NotificationService {
     // ============ 卡片构建 ============
 
     private Map<String, Object> buildCard(LocalDate reportDate, String displayName,
-                                          MonthlyReturnVO monthReturn, ReturnSummaryVO summary,
+                                          DailyReturnVO dayReturn, MonthlyReturnVO monthReturn,
+                                          ReturnSummaryVO summary,
                                           DividendSummaryVO dividend, DashboardOverviewVO overview) {
         String title = "📊 家庭资产日报 · " + reportDate.format(DateTimeFormatter.ISO_DATE)
                 + (isBlank(displayName) ? "" : " · " + displayName);
@@ -143,7 +169,7 @@ public class NotificationServiceImpl implements NotificationService {
         List<String> lines = new ArrayList<>();
         lines.add(netAssetBlock(overview));
         lines.add("");
-        lines.add(returnBlock(mdLabel, monthReturn, summary));
+        lines.add(returnBlock(mdLabel, dayReturn, monthReturn, summary));
         lines.add("");
         lines.add(dividendBlock(dividend));
         lines.add("");
@@ -197,10 +223,15 @@ public class NotificationServiceImpl implements NotificationService {
         return String.join(" · ", parts);
     }
 
-    /** 📈 投资收益：本月 / 本年 / 全部，每行含金额 + 收益率 + 红绿符号 */
-    private String returnBlock(String dateLabel, MonthlyReturnVO month, ReturnSummaryVO s) {
+    /** 📈 投资收益：昨日(T-1) / 本月 / 本年 / 全部，每行含金额 + 收益率 + 红绿符号 */
+    private String returnBlock(String dateLabel, DailyReturnVO day, MonthlyReturnVO month, ReturnSummaryVO s) {
         StringBuilder sb = new StringBuilder();
         sb.append("📈 **投资收益（截至 ").append(dateLabel).append("）**");
+        if (day != null) {
+            sb.append("\n　").append(returnLine("昨日", nz(day.getReturnPct()), nz(day.getPnlCny())));
+        } else {
+            sb.append("\n　昨日 暂无数据");
+        }
         if (month != null) {
             sb.append("\n　").append(returnLine("本月", nz(month.getReturnPct()), nz(month.getAbsolutePnlCny())));
         } else {

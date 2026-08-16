@@ -1,0 +1,8 @@
+# Deploy-only image: overlay a host-built jar onto the already-cached
+# home-wealth-backend image. Avoids pulling maven/temurin base images from
+# Docker Hub (blocked here) and avoids rebuilding inside the container.
+# Usage: build the jar on host first, then:
+#   JAVA_HOME=/opt/homebrew/opt/openjdk@17 mvn -f backend/pom.xml clean package -DskipTests
+#   docker build -t home-wealth-backend:latest -f backend/Dockerfile.deploy backend
+FROM home-wealth-backend:latest
+COPY target/home-wealth-1.0.0.jar app.jar

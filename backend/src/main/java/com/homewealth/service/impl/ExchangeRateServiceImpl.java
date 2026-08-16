@@ -1,8 +1,7 @@
 package com.homewealth.service.impl;
 
 import com.homewealth.mapper.ExchangeRateMapper;
-import com.homewealth.market.MarketQuote;
-import com.homewealth.market.YahooFinanceFetcher;
+import com.homewealth.market.SinaFinanceFetcher;
 import com.homewealth.model.ExchangeRate;
 import com.homewealth.service.ExchangeRateService;
 import lombok.RequiredArgsConstructor;
@@ -20,16 +19,7 @@ import java.util.*;
 public class ExchangeRateServiceImpl implements ExchangeRateService {
 
     private final ExchangeRateMapper exchangeRateMapper;
-    private final YahooFinanceFetcher yahooFetcher;
-
-    // Yahoo Finance 汇率 symbol 格式: USDCNY=X（1 USD = ? CNY）
-    private static final Map<String, String> FX_SYMBOLS = Map.of(
-            "USD", "USDCNY=X",
-            "HKD", "HKDCNY=X",
-            "EUR", "EURCNY=X",
-            "JPY", "JPYCNY=X",
-            "GBP", "GBPCNY=X"
-    );
+    private final SinaFinanceFetcher sinaFetcher;
 
     @Override
     public BigDecimal getRate(String fromCurrency, String toCurrency) {
@@ -63,26 +53,23 @@ public class ExchangeRateServiceImpl implements ExchangeRateService {
 
     @Override
     public void refreshRates() {
-        log.info("Refreshing exchange rates from Yahoo Finance...");
-        List<String> symbols = new ArrayList<>(FX_SYMBOLS.values());
-        Map<String, MarketQuote> quotes = yahooFetcher.fetchQuotes(symbols);
+        log.info("Refreshing exchange rates from Sina Finance...");
+        Map<String, BigDecimal> rates = sinaFetcher.fetchFxRates();
 
-        for (Map.Entry<String, String> entry : FX_SYMBOLS.entrySet()) {
-            String currency = entry.getKey();
-            String symbol = entry.getValue();
-            MarketQuote quote = quotes.get(symbol);
-            if (quote != null && quote.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-                ExchangeRate rate = new ExchangeRate();
-                rate.setFromCurrency(currency);
-                rate.setToCurrency("CNY");
-                rate.setRate(quote.getPrice());
-                rate.setRateDate(LocalDate.now());
-                rate.setSource("YAHOO");
-                exchangeRateMapper.upsert(rate);
-                log.info("Updated rate: 1 {} = {} CNY", currency, quote.getPrice());
-            } else {
-                log.warn("Failed to get rate for {}", symbol);
-            }
+        if (rates.isEmpty()) {
+            log.error("No exchange rates returned — keeping previous values");
+            return;
+        }
+
+        for (Map.Entry<String, BigDecimal> entry : rates.entrySet()) {
+            ExchangeRate rate = new ExchangeRate();
+            rate.setFromCurrency(entry.getKey());
+            rate.setToCurrency("CNY");
+            rate.setRate(entry.getValue());
+            rate.setRateDate(LocalDate.now());
+            rate.setSource("SINA");
+            exchangeRateMapper.upsert(rate);
+            log.info("Updated rate: 1 {} = {} CNY", entry.getKey(), entry.getValue());
         }
     }
 }

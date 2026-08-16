@@ -185,8 +185,18 @@
             </div>
             <div class="col-qty">{{ g.totalQuantity }}</div>
             <div class="col-price">
-              {{ g.priceCurrency }} {{ g.currentPrice }}
+              <template v-if="g.currentPrice != null">{{ g.priceCurrency }} {{ g.currentPrice }}</template>
+              <span v-else class="no-quote">—</span>
               <n-tag v-if="g.priceSource === 'MANUAL'" size="tiny" type="warning" :bordered="false" style="margin-left:4px">手工</n-tag>
+              <n-tag v-else-if="g.currentPrice == null" size="tiny" type="error" :bordered="false"
+                     style="margin-left:4px" title="无可用行情源，该持仓未计入市值">
+                无行情
+              </n-tag>
+              <n-tag v-else-if="staleDays(g.priceTradeDate) >= STALE_DAYS_THRESHOLD" size="tiny" type="error"
+                     :bordered="false" style="margin-left:4px"
+                     :title="`最后成交日 ${g.priceTradeDate}`">
+                过期 {{ staleDays(g.priceTradeDate) }} 天
+              </n-tag>
             </div>
             <div class="col-value">{{ formatCny(g.totalMarketValueCny) }}</div>
             <div class="col-pnl" v-if="g.totalUnrealizedPnl != null" :class="g.totalUnrealizedPnl >= 0 ? 'up' : 'down'">
@@ -536,6 +546,7 @@ const aggregatedHoldings = computed(() => {
         priceCurrency: h.priceCurrency,
         priceChangePct: h.priceChangePct,
         isStale: h.isStale,
+        priceTradeDate: h.priceTradeDate,
         priceSource: h.priceSource,
         totalQuantity: 0,
         totalMarketValueCny: 0,
@@ -557,6 +568,10 @@ const aggregatedHoldings = computed(() => {
       g.totalCostCny += +(h.marketValueCny - h.unrealizedPnl).toFixed(4)
     }
     g.isStale = g.isStale || h.isStale
+    // 合并行取最旧的交易日 —— 过期程度以最差的一笔为准
+    if (h.priceTradeDate && (!g.priceTradeDate || h.priceTradeDate < g.priceTradeDate)) {
+      g.priceTradeDate = h.priceTradeDate
+    }
   }
   // 计算合并后浮盈亏%
   for (const g of groups.values()) {
@@ -570,6 +585,20 @@ const aggregatedHoldings = computed(() => {
 })
 
 const marketLabel = (key: string) => MARKET_TYPE_LABELS[key] || key
+
+// 超过该天数未更新即在列表中明确标红。取 3 天是为了跳过正常的周末休市
+// （周五收盘价在周日看是 2 天），只暴露真正的数据源故障。
+const STALE_DAYS_THRESHOLD = 3
+
+/** 距该价格对应交易日已过去的自然天数 */
+const staleDays = (tradeDate?: string | null): number => {
+  if (!tradeDate) return 0
+  const traded = new Date(`${tradeDate}T00:00:00`)
+  if (Number.isNaN(traded.getTime())) return 0
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.round((today.getTime() - traded.getTime()) / 86_400_000))
+}
 
 const marketOptions = Object.entries(MARKET_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))
 const marketFilterOptions = [{ label: '全部', value: null }, ...marketOptions]
@@ -1042,6 +1071,7 @@ onMounted(async () => {
 }
 .list-row:hover { background: var(--hw-bg-secondary); }
 .list-row.stale { opacity: 0.7; }
+.no-quote { color: var(--text-tertiary, #999); }
 .list-row-wrap:last-child .list-row:not(:has(+ .sub-rows)),
 .list-row-wrap:last-child .sub-rows .sub-row:last-child { border-bottom: none; }
 .col-rank { font-size: 13px; font-weight: 600; color: var(--hw-text-muted); text-align: center; }

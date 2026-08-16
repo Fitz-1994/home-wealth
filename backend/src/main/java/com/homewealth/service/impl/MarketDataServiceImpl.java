@@ -71,43 +71,39 @@ public class MarketDataServiceImpl implements MarketDataService {
 
         log.info("Refreshing market prices for {} symbols", targets.size());
 
-        // 分离公募基金和其他标的
+        // 按数据源分流：
+        //   场外基金  → 东财（ChinaFundFetcher）
+        //   期权      → Yahoo（当前已被封禁，抓不到即标记为过期，不阻塞其余标的）
+        //   股票/ETF  → 新浪，一次批量请求拿全 A股/港股/美股，并自带中文名
         List<String> fundSymbols = targets.stream().filter(this::isFundSymbol).toList();
-        List<String> yahooSymbols = targets.stream().filter(s -> !isFundSymbol(s)).toList();
+        List<String> optionSymbols = targets.stream().filter(this::isOptionSymbol).toList();
+        List<String> sinaSymbols = targets.stream()
+                .filter(s -> !isFundSymbol(s) && !isOptionSymbol(s))
+                .toList();
 
-        // 获取 Yahoo 行情
         Map<String, MarketQuote> quotes = new HashMap<>();
-        if (!yahooSymbols.isEmpty()) {
-            quotes.putAll(yahooFetcher.fetchQuotes(yahooSymbols));
+        if (!sinaSymbols.isEmpty()) {
+            quotes.putAll(sinaFetcher.fetchQuotes(sinaSymbols));
         }
-
-        // 获取公募基金净值
         if (!fundSymbols.isEmpty()) {
             quotes.putAll(fundFetcher.fetchQuotes(fundSymbols));
         }
+        if (!optionSymbols.isEmpty()) {
+            quotes.putAll(yahooFetcher.fetchQuotes(optionSymbols));
+        }
 
-        // 对 A股/港股 额外获取中文名称
-        List<String> cnHkSymbols = yahooSymbols.stream()
-                .filter(s -> s.endsWith(".SS") || s.endsWith(".SZ") || s.endsWith(".HK"))
-                .toList();
-        Map<String, String> chineseNames = cnHkSymbols.isEmpty()
-                ? Collections.emptyMap()
-                : sinaFetcher.fetchChineseNames(cnHkSymbols);
-
+        int stale = 0;
         for (String symbol : targets) {
             MarketQuote quote = quotes.get(symbol);
             if (quote != null) {
-                // 优先使用新浪获取的中文名称（A股/港股）
-                String chineseName = chineseNames.get(symbol);
-                if (chineseName != null && !chineseName.isEmpty()) {
-                    quote.setSymbolName(chineseName);
-                }
                 savePriceCache(symbol, quote);
             } else {
                 log.warn("No quote returned for symbol: {}, marking stale", symbol);
                 priceCacheMapper.markStale(symbol);
+                stale++;
             }
         }
+        log.info("Price refresh done: {} updated, {} stale", targets.size() - stale, stale);
     }
 
     private void savePriceCache(String symbol, MarketQuote quote) {
@@ -200,6 +196,12 @@ public class MarketDataServiceImpl implements MarketDataService {
 
     private boolean isFundSymbol(String symbol) {
         return symbol != null && symbol.matches("\\d{6}");
+    }
+
+    private boolean isOptionSymbol(String symbol) {
+        if (symbol == null) return false;
+        String market = inferMarket(symbol);
+        return "HK_OPT".equals(market) || "US_OPT".equals(market);
     }
 
     private String inferMarket(String symbol) {

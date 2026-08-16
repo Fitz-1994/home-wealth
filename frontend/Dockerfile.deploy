@@ -1,0 +1,8 @@
+# Deploy-only image: overlay a host-built dist/ onto the already-cached
+# home-wealth-frontend image. Avoids pulling node/nginx base images from
+# Docker Hub (blocked here) and avoids rebuilding the backend.
+# Usage: build frontend dist on host first (npm run build), then:
+#   docker build -t home-wealth-frontend:latest -f Dockerfile.deploy .
+FROM home-wealth-frontend:latest
+RUN rm -rf /usr/share/nginx/html/*
+COPY dist /usr/share/nginx/html

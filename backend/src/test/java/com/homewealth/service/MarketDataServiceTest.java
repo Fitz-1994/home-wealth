@@ -2,7 +2,9 @@ package com.homewealth.service;
 
 import com.homewealth.mapper.InvestmentHoldingMapper;
 import com.homewealth.mapper.MarketPriceCacheMapper;
+import com.homewealth.market.ChinaFundFetcher;
 import com.homewealth.market.MarketQuote;
+import com.homewealth.market.SinaFinanceFetcher;
 import com.homewealth.market.YahooFinanceFetcher;
 import com.homewealth.model.MarketPriceCache;
 import com.homewealth.service.impl.MarketDataServiceImpl;
@@ -32,6 +34,10 @@ class MarketDataServiceTest {
     private InvestmentHoldingMapper holdingMapper;
     @Mock
     private YahooFinanceFetcher yahooFetcher;
+    @Mock
+    private SinaFinanceFetcher sinaFetcher;
+    @Mock
+    private ChinaFundFetcher fundFetcher;
     @Mock
     private ExchangeRateService exchangeRateService;
 
@@ -93,7 +99,7 @@ class MarketDataServiceTest {
                 .changePct(BigDecimal.valueOf(-1.09))
                 .build();
 
-        when(yahooFetcher.fetchQuotes(anyList())).thenReturn(Map.of("AAPL", quote));
+        when(sinaFetcher.fetchQuotes(anyList())).thenReturn(Map.of("AAPL", quote));
         when(exchangeRateService.getRate("USD", "CNY")).thenReturn(BigDecimal.valueOf(7.24));
 
         marketDataService.refreshSymbols(List.of("AAPL"));
@@ -105,7 +111,7 @@ class MarketDataServiceTest {
     @Test
     @DisplayName("refreshSymbols - 获取失败时标记stale")
     void testRefreshSymbols_marksStaleOnMissing() {
-        when(yahooFetcher.fetchQuotes(anyList())).thenReturn(Map.of());
+        when(sinaFetcher.fetchQuotes(anyList())).thenReturn(Map.of());
 
         marketDataService.refreshSymbols(List.of("INVALID_SYM"));
 
@@ -114,13 +120,37 @@ class MarketDataServiceTest {
     }
 
     @Test
-    @DisplayName("refreshAllActiveHoldings - 无持仓时不调用Yahoo接口")
+    @DisplayName("refreshAllActiveHoldings - 无持仓时不调用行情接口")
     void testRefreshAllActiveHoldings_emptyHoldings() {
         when(holdingMapper.findAllActiveSymbols()).thenReturn(List.of());
 
         marketDataService.refreshAllActiveHoldings();
 
+        verify(sinaFetcher, never()).fetchQuotes(any());
         verify(yahooFetcher, never()).fetchQuotes(any());
+        verify(fundFetcher, never()).fetchQuotes(any());
+    }
+
+    @Test
+    @DisplayName("refreshSymbols - 按市场分流到各自数据源")
+    void testRefreshSymbols_routesBySource() {
+        when(sinaFetcher.fetchQuotes(anyList())).thenReturn(Map.of());
+        when(fundFetcher.fetchQuotes(anyList())).thenReturn(Map.of());
+        when(yahooFetcher.fetchQuotes(anyList())).thenReturn(Map.of());
+
+        marketDataService.refreshSymbols(List.of(
+                "600519.SS",             // A股   → 新浪
+                "0700.HK",               // 港股  → 新浪
+                "AAPL",                  // 美股  → 新浪
+                "017386",                // 场外基金 → 东财
+                "TCH261230P400.HK",      // 港股期权 → Yahoo
+                "VOO280121P00445000"));  // 美股期权 → Yahoo
+
+        // 股票/ETF 一次批量请求，不再按 symbol 并发单独打 —— 这正是被 Yahoo 封 IP 的行为
+        verify(sinaFetcher, times(1)).fetchQuotes(List.of("600519.SS", "0700.HK", "AAPL"));
+        verify(fundFetcher, times(1)).fetchQuotes(List.of("017386"));
+        verify(yahooFetcher, times(1))
+                .fetchQuotes(List.of("TCH261230P400.HK", "VOO280121P00445000"));
     }
 
     @Test

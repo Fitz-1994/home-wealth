@@ -37,6 +37,7 @@ public class ChinaFundFetcher {
 
     private static final String FUNDGZ_URL = "http://fundgz.1234567.com.cn/js/%s.js";
     private static final String LSJZ_URL = "https://api.fund.eastmoney.com/f10/lsjz?fundCode=%s&pageIndex=1&pageSize=2";
+    private static final String LSJZ_HISTORY_URL = "https://api.fund.eastmoney.com/f10/lsjz?fundCode=%s&pageIndex=1&pageSize=%d";
     private static final String FHSP_URL = "https://api.fund.eastmoney.com/f10/fhsp?fundCode=%s&pageIndex=1&pageSize=100";
     private static final Pattern JSONP_PATTERN = Pattern.compile("jsonpgz\\((.+?)\\);?");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -82,12 +83,17 @@ public class ChinaFundFetcher {
     }
 
     private Optional<MarketQuote> fetchOne(String fundCode) throws Exception {
-        // 先尝试 fundgz API（支持盘中估值）
-        Optional<MarketQuote> result = fetchFromFundgz(fundCode);
-        if (result.isPresent()) return result;
+        // 先尝试 fundgz API（支持盘中估值）。
+        // 该接口会以 HTTP 200 返回 HTML 错误页，解析时抛异常；异常绝不能中断兜底流程 ——
+        // 否则主源一坏，全部基金直接判为过期，而 lsjz 明明还是通的。
+        try {
+            Optional<MarketQuote> result = fetchFromFundgz(fundCode);
+            if (result.isPresent()) return result;
+        } catch (Exception e) {
+            log.debug("fundgz failed for {}, falling back to lsjz: {}", fundCode, e.getMessage());
+        }
 
         // 兜底：使用 lsjz API（历史确认净值，所有基金都支持）
-        log.debug("Falling back to lsjz API for fund {}", fundCode);
         return fetchFromLsjz(fundCode);
     }
 
@@ -194,6 +200,61 @@ public class ChinaFundFetcher {
                 .tradeDate(tradeDate)
                 .source("EASTMONEY")
                 .build());
+    }
+
+    // ---- 历史净值（用于快照回补） ----
+
+    /**
+     * 抓取基金近 N 个净值确认日的单位净值（按日期升序）。
+     *
+     * @param fundCode 6 位基金代码
+     * @param days     需要的净值日数量
+     */
+    public List<DailyClose> fetchNavHistory(String fundCode, int days) {
+        if (fundCode == null || fundCode.isBlank() || days <= 0) return Collections.emptyList();
+        try {
+            String url = String.format(LSJZ_HISTORY_URL, fundCode, days);
+
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                    .header("Referer", "https://fund.eastmoney.com/")
+                    .timeout(Duration.ofSeconds(10))
+                    .GET().build();
+
+            HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                log.warn("Fund NAV history HTTP {} for {}", response.statusCode(), fundCode);
+                return Collections.emptyList();
+            }
+
+            JsonNode list = objectMapper.readTree(response.body()).path("Data").path("LSJZList");
+            if (!list.isArray()) return Collections.emptyList();
+
+            List<DailyClose> result = new ArrayList<>();
+            for (JsonNode n : list) {
+                String navStr = n.path("DWJZ").asText("");
+                String dateStr = n.path("FSRQ").asText("");
+                if (navStr.isEmpty() || dateStr.isEmpty()) continue;
+                try {
+                    BigDecimal nav = new BigDecimal(navStr);
+                    if (nav.signum() <= 0) continue;
+                    result.add(DailyClose.builder()
+                            .date(LocalDate.parse(dateStr, DATE_FMT))
+                            .close(nav.setScale(6, RoundingMode.HALF_UP))
+                            .currency("CNY")
+                            .build());
+                } catch (Exception ignored) {
+                    // 跳过无法解析的净值行
+                }
+            }
+            // 接口按日期倒序返回，统一成升序
+            result.sort(Comparator.comparing(DailyClose::getDate));
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to fetch NAV history for {}: {}", fundCode, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     // ---- 基金分红数据 ----

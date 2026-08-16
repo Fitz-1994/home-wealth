@@ -1,6 +1,9 @@
 package com.homewealth.service.impl;
 
 import com.homewealth.mapper.*;
+import com.homewealth.market.ChinaFundFetcher;
+import com.homewealth.market.DailyClose;
+import com.homewealth.market.MarketHistoryFetcher;
 import com.homewealth.model.*;
 import com.homewealth.model.InvestmentCashBalance;
 import com.homewealth.service.ExchangeRateService;
@@ -12,8 +15,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,9 +35,19 @@ public class SnapshotServiceImpl implements SnapshotService {
     private final ExchangeRateService exchangeRateService;
     private final MarketDataService marketDataService;
     private final UserMapper userMapper;
+    private final MarketHistoryFetcher historyFetcher;
+    private final ChinaFundFetcher fundFetcher;
 
     @Override
     public void generateSnapshot(Long userId, LocalDate date) {
+        generateSnapshot(userId, date, null);
+    }
+
+    /**
+     * @param priceOverride 非空时按该价格表定价（用于按历史收盘价回补），
+     *                      缺失的标的回退到 price_cache 中的最新价
+     */
+    private void generateSnapshot(Long userId, LocalDate date, Map<String, BigDecimal> priceOverride) {
         log.info("Generating snapshot for userId={} date={}", userId, date);
 
         // 获取该用户所有活跃账户
@@ -71,8 +84,15 @@ public class SnapshotServiceImpl implements SnapshotService {
                     MarketPriceCache price = priceMap.get(holding.getSymbol());
                     if (price == null) continue;
 
+                    // 回补时优先使用该日历史收盘价，缺失则沿用缓存中的最新价
+                    BigDecimal unitPrice = price.getPrice();
+                    if (priceOverride != null) {
+                        BigDecimal historical = priceOverride.get(holding.getSymbol());
+                        if (historical != null) unitPrice = historical;
+                    }
+
                     BigDecimal mv = holding.getQuantity()
-                            .multiply(price.getPrice());
+                            .multiply(unitPrice);
                     BigDecimal mvCny = exchangeRateService.toCny(mv, price.getCurrency());
                     investment = investment.add(mvCny);
 
@@ -154,6 +174,76 @@ public class SnapshotServiceImpl implements SnapshotService {
     @Override
     public void deleteSnapshot(Long userId, LocalDate date) {
         netSnapshotMapper.deleteByUserIdAndDate(userId, date);
+    }
+
+    @Override
+    public BackfillResult backfillSnapshots(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to)) {
+            throw new IllegalArgumentException("回补区间无效: " + from + " ~ " + to);
+        }
+        log.info("[Backfill] rebuilding snapshots {} ~ {}", from, to);
+
+        List<String> symbols = holdingMapper.findAllActiveSymbols();
+        // 多留一倍余量，覆盖区间内的非交易日
+        int days = (int) (ChronoUnit.DAYS.between(from, to) + 1) * 2 + 10;
+
+        // symbol → (日期 → 收盘价)
+        Map<String, Map<LocalDate, BigDecimal>> historyBySymbol = new HashMap<>();
+        List<String> carriedForward = new ArrayList<>();
+
+        for (String symbol : symbols) {
+            List<DailyClose> closes = symbol.matches("\\d{6}")
+                    ? fundFetcher.fetchNavHistory(symbol, days)
+                    : historyFetcher.fetchDailyCloses(symbol, days);
+
+            if (closes.isEmpty()) {
+                // 期权等无免费历史源的标的：沿用 price_cache 中的最新价
+                carriedForward.add(symbol);
+                continue;
+            }
+            Map<LocalDate, BigDecimal> byDate = new HashMap<>();
+            for (DailyClose dc : closes) byDate.put(dc.getDate(), dc.getClose());
+            historyBySymbol.put(symbol, byDate);
+        }
+
+        if (!carriedForward.isEmpty()) {
+            log.warn("[Backfill] no historical prices for {} symbols, carrying forward latest cached price: {}",
+                    carriedForward.size(), carriedForward);
+        }
+
+        List<Long> userIds = userMapper.findAllActiveUserIds();
+        int rebuilt = 0;
+        // 覆盖区间内每一天：调度器在周末/节假日同样会生成快照，
+        // 这些日子按“之前最近一个交易日”的收盘价定价，与休市时的真实市值一致。
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+            final LocalDate d = date;
+            Map<String, BigDecimal> priceOnDate = new HashMap<>();
+            historyBySymbol.forEach((symbol, byDate) ->
+                    priceAsOf(byDate, d).ifPresent(p -> priceOnDate.put(symbol, p)));
+
+            if (priceOnDate.isEmpty()) {
+                log.warn("[Backfill] no priced symbols for {}, skipping", d);
+                continue;
+            }
+            for (Long userId : userIds) {
+                generateSnapshot(userId, d, priceOnDate);
+            }
+            rebuilt++;
+        }
+
+        log.info("[Backfill] done: {} dates rebuilt, {} symbols priced from history, {} carried forward",
+                rebuilt, historyBySymbol.size(), carriedForward.size());
+        return new BackfillResult(from, to, rebuilt, historyBySymbol.size(), carriedForward);
+    }
+
+    /** 取 date 当日收盘价；停牌无数据时回退到之前最近一个有价日 */
+    private static Optional<BigDecimal> priceAsOf(Map<LocalDate, BigDecimal> byDate, LocalDate date) {
+        BigDecimal exact = byDate.get(date);
+        if (exact != null) return Optional.of(exact);
+        return byDate.entrySet().stream()
+                .filter(e -> !e.getKey().isAfter(date))
+                .max(Map.Entry.comparingByKey())
+                .map(Map.Entry::getValue);
     }
 
     @Override

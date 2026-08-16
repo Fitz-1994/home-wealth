@@ -31,4 +31,15 @@ public class SnapshotController {
         snapshotService.deleteSnapshot(userId, date);
         return ApiResponse.success();
     }
+
+    /**
+     * 按历史收盘价重建区间内的每日快照（全体用户）。
+     * 仅在该区间内持仓未变动时结果才准确 —— 回补不回放历史交易。
+     */
+    @PostMapping("/backfill")
+    public ApiResponse<SnapshotService.BackfillResult> backfill(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.success(snapshotService.backfillSnapshots(from, to));
+    }
 }

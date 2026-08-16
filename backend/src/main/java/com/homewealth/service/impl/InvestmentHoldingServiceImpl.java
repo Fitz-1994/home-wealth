@@ -172,6 +172,7 @@ public class InvestmentHoldingServiceImpl implements InvestmentHoldingService {
             vo.setPriceCurrency(price.getCurrency());
             vo.setPriceChangePct(price.getChangePct());
             vo.setPriceUpdatedAt(price.getFetchedAt());
+            vo.setPriceTradeDate(price.getTradeDate());
             vo.setStale(price.getIsStale());
             vo.setPriceSource(price.getSource());
 

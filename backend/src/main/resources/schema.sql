@@ -354,10 +354,13 @@ CREATE TABLE IF NOT EXISTS `benchmark_quote` (
 -- ============================================
 -- 初始化种子汇率数据（定时任务启动后会自动更新）
 -- ============================================
+-- 兜底汇率：仅在库中尚无任何真实汇率时生效。
+-- 必须钉死在哨兵日期，不能用 CURDATE() —— 唯一键含 rate_date，用当天日期会导致
+-- 每天首次启动都插入一条"最新"的硬编码汇率，把真实行情覆盖掉（getRate 取最新一条）。
 INSERT IGNORE INTO `exchange_rate` (`from_currency`, `to_currency`, `rate`, `rate_date`, `source`) VALUES
-('USD', 'CNY', 7.2500, CURDATE(), 'MANUAL'),
-('HKD', 'CNY', 0.9300, CURDATE(), 'MANUAL'),
-('EUR', 'CNY', 7.8000, CURDATE(), 'MANUAL'),
-('JPY', 'CNY', 0.0480, CURDATE(), 'MANUAL'),
-('GBP', 'CNY', 9.1000, CURDATE(), 'MANUAL'),
-('CNY', 'CNY', 1.0000, CURDATE(), 'MANUAL');
+('USD', 'CNY', 7.2500, '2000-01-01', 'MANUAL'),
+('HKD', 'CNY', 0.9300, '2000-01-01', 'MANUAL'),
+('EUR', 'CNY', 7.8000, '2000-01-01', 'MANUAL'),
+('JPY', 'CNY', 0.0480, '2000-01-01', 'MANUAL'),
+('GBP', 'CNY', 9.1000, '2000-01-01', 'MANUAL'),
+('CNY', 'CNY', 1.0000, '2000-01-01', 'MANUAL');

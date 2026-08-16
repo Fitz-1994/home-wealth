@@ -6,7 +6,7 @@ import com.homewealth.dto.response.BenchmarkSeriesVO;
 import com.homewealth.mapper.BenchmarkQuoteMapper;
 import com.homewealth.mapper.DailyInvestmentSnapshotMapper;
 import com.homewealth.market.DailyClose;
-import com.homewealth.market.YahooFinanceFetcher;
+import com.homewealth.market.MarketHistoryFetcher;
 import com.homewealth.model.BenchmarkQuote;
 import com.homewealth.service.BenchmarkService;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class BenchmarkServiceImpl implements BenchmarkService {
     private static final int PCT_SCALE = 4;
 
     /** 每日调度抓取范围：近 5 个交易日，自动补齐节假日/漏抓缺口 */
-    private static final String DAILY_RANGE = "5d";
+    private static final int DAILY_DAYS = 5;
     /** 组合无快照时的回填兜底起始（近 3 个月） */
     private static final int FALLBACK_MONTHS = 3;
 
@@ -51,12 +51,12 @@ public class BenchmarkServiceImpl implements BenchmarkService {
 
     private final BenchmarkQuoteMapper benchmarkMapper;
     private final DailyInvestmentSnapshotMapper snapshotMapper;
-    private final YahooFinanceFetcher yahooFetcher;
+    private final MarketHistoryFetcher historyFetcher;
 
     @Override
     public void fetchAndSaveAll() {
         // 每日增量：只抓近几日，无需下限过滤（都在组合起始日之后）
-        fetchAndSaveRange(DAILY_RANGE, null);
+        fetchAndSaveRange(DAILY_DAYS, null);
     }
 
     @Override
@@ -67,32 +67,27 @@ public class BenchmarkServiceImpl implements BenchmarkService {
         if (inception == null) {
             inception = today.minusMonths(FALLBACK_MONTHS);
         }
-        String range = pickRange(inception, today);
-        log.info("[Benchmark] backfill from inception={} (range={})", inception, range);
-        fetchAndSaveRange(range, inception);
+        int days = pickDays(inception, today);
+        log.info("[Benchmark] backfill from inception={} (days={})", inception, days);
+        fetchAndSaveRange(days, inception);
         benchmarkMapper.deleteBefore(inception);
     }
 
-    /** 选取能覆盖 [from, today] 的最小 Yahoo range 档位 */
-    private String pickRange(LocalDate from, LocalDate today) {
-        long days = ChronoUnit.DAYS.between(from, today) + 10;  // 留 10 天缓冲
-        if (days <= 30) return "1mo";
-        if (days <= 90) return "3mo";
-        if (days <= 180) return "6mo";
-        if (days <= 365) return "1y";
-        if (days <= 730) return "2y";
-        if (days <= 1825) return "5y";
-        return "max";
+    /** 估算覆盖 [from, today] 所需的交易日数（按每周 5 个交易日折算，留足缓冲） */
+    private int pickDays(LocalDate from, LocalDate today) {
+        long calendarDays = ChronoUnit.DAYS.between(from, today) + 10;
+        long tradingDays = Math.round(calendarDays * 5.0 / 7.0) + 10;
+        return (int) Math.min(Math.max(tradingDays, DAILY_DAYS), 2000);
     }
 
     /** 抓取并入库；minDate 非空时仅保留该日期（含）之后的数据点 */
-    private void fetchAndSaveRange(String range, LocalDate minDate) {
+    private void fetchAndSaveRange(int days, LocalDate minDate) {
         for (Map.Entry<String, String> e : BENCHMARKS.entrySet()) {
             String symbol = e.getKey();
             try {
-                List<DailyClose> closes = yahooFetcher.fetchDailyCloses(symbol, range);
+                List<DailyClose> closes = historyFetcher.fetchDailyCloses(symbol, days);
                 if (closes.isEmpty()) {
-                    log.warn("[Benchmark] no history for {} (range={})", symbol, range);
+                    log.warn("[Benchmark] no history for {} (days={})", symbol, days);
                     continue;
                 }
                 int saved = 0;
@@ -104,16 +99,21 @@ public class BenchmarkServiceImpl implements BenchmarkService {
                     bq.setQuoteDate(dc.getDate());
                     bq.setClose(dc.getClose());
                     bq.setCurrency(dc.getCurrency() != null ? dc.getCurrency() : "CNY");
-                    bq.setSource("YAHOO");
+                    bq.setSource(sourceOf(symbol));
                     benchmarkMapper.upsert(bq);
                     saved++;
                 }
-                log.info("[Benchmark] saved {} points for {} (range={}, latest={})",
-                        saved, symbol, range, closes.get(closes.size() - 1).getDate());
+                log.info("[Benchmark] saved {} points for {} (days={}, latest={})",
+                        saved, symbol, days, closes.get(closes.size() - 1).getDate());
             } catch (Exception ex) {
                 log.error("[Benchmark] fetch failed for {}: {}", symbol, ex.getMessage());
             }
         }
+    }
+
+    /** 恒生走腾讯，其余走新浪 —— 与 MarketHistoryFetcher 的路由保持一致 */
+    private static String sourceOf(String symbol) {
+        return "^HSI".equals(symbol) ? "TENCENT" : "SINA";
     }
 
     @Override

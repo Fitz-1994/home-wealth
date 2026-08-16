@@ -102,7 +102,7 @@
                 <div class="th-num">期末市值</div>
                 <div class="th-num">净入金</div>
               </div>
-              <div v-for="r in displayRows" :key="r.period" class="table-row">
+              <div v-for="r in tableRows" :key="r.period" class="table-row">
                 <div class="td-period">{{ r.period }}</div>
                 <div class="td-num" :class="cls(r.returnPct)">{{ pct(r.returnPct) }}</div>
                 <div class="td-num" :class="cls(r.pnl)">{{ cny(r.pnl) }}</div>
@@ -176,6 +176,9 @@ const displayRows = computed(() => {
     netCashflow: r.netCashflow
   }))
 })
+
+// 表格倒排展示（最新在上），图表仍保持时间正序（左旧右新）
+const tableRows = computed(() => [...displayRows.value].reverse())
 
 const categories = computed(() => displayRows.value.map(r => r.period))
 const chartValues = computed(() =>
